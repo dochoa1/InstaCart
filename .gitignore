@@ -8,3 +8,6 @@ order_products__prior.csv
 order_products__train.csv
 orders.csv
 products.csv
+
+# Cache Directories
+*_cache/

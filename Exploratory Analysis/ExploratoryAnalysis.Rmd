@@ -1,0 +1,34 @@
+---
+title: "InstaCart Exploratory Analysis"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+This file provides some exploratory analysis of the InstaCart data.
+
+```{r setup, include=FALSE}
+library(tufte)
+library(tidyverse)
+library(ggplot2)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+# Reading in the data
+```{r cache=TRUE}
+orders = read.csv("../Source/orders.csv")
+```
