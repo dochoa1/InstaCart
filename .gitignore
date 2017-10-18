@@ -10,4 +10,5 @@ orders.csv
 products.csv
 
 # Cache Directories
-*_cache/
+*_cache
+*_files
