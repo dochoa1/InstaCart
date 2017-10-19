@@ -39,7 +39,7 @@ Let's start off looking at some rows in the order data.
 head(orders, 12)
 ```
 
-Quick Overview of the data:
+Quick Overview of the data: Hello
 
 order_id is a unique value given to each order.  
 user_id is a unique value given to each user.  
