@@ -18,24 +18,63 @@ output:
     toc: no
 ---
 
-This file provides some exploratory analysis of the InstaCart data.
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, cache=FALSE}
 library(tufte)
 library(tidyverse)
 library(ggplot2)
+library(ggmap)
+library(tint)
+library(lubridate)
+library(readxl)
+library(tidyr)
+library(readr)
 library(scales)
+library(plyr)
+library(dplyr)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
 
+This file provides some exploratory analysis of the InstaCart data.
+
 # Reading in the data
+
 ```{r cache=TRUE}
-orders = read.csv("../Source/orders.csv")
+orders <- read.csv("../Source/orders.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+prior <- 
+  orders %>%
+  filter(eval_set == "prior") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+
+trial <- 
+  orders %>%
+  filter(eval_set == "trial") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+test <- 
+  orders %>%
+  filter(eval_set == "test") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+
+products <- read_csv("../Source/products.csv")
+
+departments <- read_csv("../Source/departments.csv")
+
+aisles <- read_csv("../Source/aisles.csv")
 ```
 
 Let's start off looking at some rows in the order data.
 ```{r}
+names(orders)
+names(products)
+names(departments)
+names(products)
+
 head(orders, 12)
 ```
 
@@ -56,6 +95,29 @@ Let's start trying to understand the data:
 # When Do People Order?
 
 ```{r warning=FALSE}
-ggplot(data=orders, aes(x=order_hour_of_day)) + geom_histogram(stat="count", fill="seagreen4") + scale_y_continuous(labels = comma) + labs(x="Hour of day", y ="Number of orders", title="Orders by Hour of Day")
+plot1 <- 
+  prior %>%
+  ggplot(aes(x=order_hour_of_day)) + 
+  geom_histogram(stat="count", fill="seagreen4") + 
+  scale_y_continuous(labels = comma) + 
+  labs(x="Hour of day", y="Number of orders", title="Orders by Hour of Day")
+plot1
 ```
 It appears that the majority of orders are made between 10am and 4pm.
+
+
+# When Do People Order - Orders by Hour of Day by Day of the Week & Days Since Prior Order
+
+```{r warning=FALSE}
+plot2 <-
+  prior %>%
+  ggplot(aes(x=order_hour_of_day, y=order_number)) +
+  geom_point(aes(color=days_since_prior_order), alpha = 0.10) +
+  facet_wrap(~order_dow) +
+  labs(x="Hour of Day", y="Number of Orders", 
+       title="Orders by Hour of Day", subtitle="by Day of Week & Days Since Prior Order",
+       caption="Data from InstaCart Kaggle Competition")
+plot2
+```
+
+
