@@ -58,4 +58,9 @@ Let's start trying to understand the data:
 ```{r warning=FALSE}
 ggplot(data=orders, aes(x=order_hour_of_day)) + geom_histogram(stat="count", fill="seagreen4") + scale_y_continuous(labels = comma) + labs(x="Hour of day", y ="Number of orders", title="Orders by Hour of Day")
 ```
+
+```{r}
+print("test Github commit: silly changes")
+```
+
 It appears that the majority of orders are made between 10am and 4pm.
