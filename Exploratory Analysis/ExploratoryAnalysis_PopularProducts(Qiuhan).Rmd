@@ -18,36 +18,39 @@ output:
     toc: no
 ---
 
-
 ```{r setup, include=FALSE, cache=FALSE}
 library(tufte)
 library(tidyverse)
 library(ggplot2)
-library(ggmap)
-library(tint)
 library(lubridate)
-library(readxl)
-library(tidyr)
-library(readr)
 library(scales)
-library(plyr)
-library(dplyr)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
 
 This file provides some exploratory analysis of the InstaCart data.
 
+```{r cache=TRUE}
+orders <- read_csv("../Source/orders.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+
+order_products_train <- read_csv("../Source/order_products__train.csv")
+
+products <- read_csv("../Source/products.csv")
+```
+
+
 # Reading in the data
 
 ```{r}
 popular_products <- 
   orders %>%
-  inner_join(order_products_train,order_id=order_id) %>%
+  inner_join(order_products_train,by=c("order_id"="order_id")) %>%
   group_by(product_id,order_hour_of_day) %>%
-  summarize(total_products_ordered=n()) %>%
+  summarise(total_products_ordered=n()) %>%
   arrange(desc(total_products_ordered)) %>%
-  left_join(products,product_id=product_id)
+  left_join(products,by=c("product_id"="product_id"))
 popular_products 
 ```
 

@@ -18,22 +18,54 @@ output:
     toc: no
 ---
 
-
 ```{r setup, include=FALSE, cache=FALSE}
 library(tufte)
 library(tidyverse)
 library(ggplot2)
-library(ggmap)
-library(tint)
 library(lubridate)
-library(readxl)
-library(tidyr)
-library(readr)
 library(scales)
-library(plyr)
-library(dplyr)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
 
-This file provides some exploratory analysis of the InstaCart data.
+This file provides some exploratory analysis regarding the days_since_prior_order variable of the InstaCart data.
+
+# Reading in the data
+
+```{r cache=TRUE}
+orders <- read_csv("../Source/orders.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+
+#order_products <- read_csv("../Source/order_products__prior.csv")
+```
+
+```{r}
+head(orders, 15)
+head(order_products, 12)
+```
+
+
+# Average Number of Days Since Prior Order:
+```{r}
+(avgNum <-
+  orders %>%
+  filter(!is.na(days_since_prior_order)) %>%
+  summarise(avg = mean(days_since_prior_order)))
+```
+
+It seems that on average, an InstaCart user will go 12 days (rounding up) between orders.
+
+# How does time since last order affect the rate of reordering
+
+```{r cache=TRUE}
+order_products %>%
+  left_join(orders, by="order_id")
+
+```
+
+```{r}
+head(order_products, 12)
+```
+
+asdjfga
