@@ -1,0 +1,459 @@
+---
+title: "InstaCart Exploratory Analysis: Reorders\n"
+author: "April Leclair"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_Reorders_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(ggplot2)
+library(tint)
+library(lubridate)
+library(readxl)
+library(readr)
+library(scales)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+This file provides some exploratory analysis of the InstaCart data.
+
+
+# ***Reading in the Data***
+
+```{r, cache=TRUE}
+orders <- read_csv("../Source/orders.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+prior <- 
+  orders %>%
+  filter(eval_set == "prior") 
+
+train <- 
+  orders %>%
+  filter(eval_set == "train") 
+
+test <- 
+  orders %>%
+  filter(eval_set == "test") 
+
+order_products_train <- read_csv("../Source/order_products__train.csv")
+
+order_products_prior <- read_csv("../Source/order_products__prior.csv")
+
+products <- read_csv("../Source/products.csv")
+
+departments <- read_csv("../Source/departments.csv")
+
+aisles <- read_csv("../Source/aisles.csv")
+
+
+```
+
+
+## **Variable Names**
+
+```{r}
+names(orders)
+names(order_products_train)
+names(products)
+names(departments)
+names(products)
+```
+
+
+## **New Data Tables**
+
+```{r, cache=TRUE, include=FALSE}
+## `products_n` = `products` + `departments` + `aisles`
+prod_dept <- 
+  products %>%
+  left_join(departments, by = "department_id")
+prod_dept_aisle <-
+  prod_dept %>%
+  left_join(aisles, by = "aisle_id")
+names(prod_dept_aisle)
+
+
+## Train Data - New
+prod_dept_aisle_orderid_t <-
+  prod_dept_aisle %>%
+  left_join(order_products_train, by = "product_id")
+train_n <-
+  prod_dept_aisle_orderid_t %>%
+  left_join(train, by = "order_id")
+
+
+## Prior Data - New
+# prod_dept_aisle_orderid_p <-
+#   prod_dept_aisle %>%
+#   left_join(order_products_prior, by = "product_id")
+# prior_n <-
+#   prod_dept_aisle_orderid_p %>%
+#   left_join(prior, by = "order_id")
+
+
+## Process
+train_nn <- train_n
+train_nn$order_dow <- 
+  factor(train_n$order_dow, 
+         levels= c("Sunday", "Monday", "Tuesday", 
+                   "Wednesday", "Thursday", "Friday", "Saturday"))
+train_nn[order(train_n$order_dow),]
+str(train_nn$order_dow)
+
+## Clean
+rm(prod_dept, prod_dept_aisle, prod_dept_aisle_orderid_t)
+
+
+## Variable Names from the Train - New
+names(train_n)
+```
+
+
+***
+
+
+# ***Basic Visualization***
+
+
+## **Order** 
+### *Question: Which product is most likely to be reordered? (the duration cycle for each product)*
+
+
+## **1. Reorders by `product`, `aisle`, `department` & `order_dow`**
+
+
+### a. Top 10 Reorders by `department`
+
+> The produce department have the highest reorder counts at 271,886, almost the double the reorders for the second top dairy eggs department at 146,502. Next follows "beverages", "snacks", and "frozen" in the range of 55-75 thousand, and the rest five are in the 18-30 thousand range. 
+
+```{r}
+plot1 <-
+train_n %>%
+  dplyr::group_by(department, reordered) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(department, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Department", y="Number of Reorders", 
+       title="Top 10 Reorders by Department", subtitle="Across All Times",
+       caption="Data from InstaCart Kaggle Competition")
+plot1
+```
+
+
+### b. Top 10 Reorders by `aisle`
+
+> Generally, fresh fruits and veggies have the highest reorder count across all times. The top three reorders are "Fresh Fruits", "Fresh Vegetables", and "Packaged Vegetables and Fruits" at 110,782; 91,368; and 51,523, respectively. Next are "Yogurt", "Water Seltzer Sparkling Water", "Milk", and "Packaged Cheese" in the range of 20-40 thousand.
+
+```{r}
+plot2 <-
+train_n %>%
+  dplyr::group_by(aisle, reordered) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  select(-reordered) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(aisle, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Aisle", y="Number of Reorders", 
+       title="Top 10 Reorders by Aisle", subtitle="Across All Times",
+       caption="Data from InstaCart Kaggle Competition")
+plot2
+```
+
+
+### c. Top 10 Reorders by `product`
+
+> Generally, organic products have the highest reorder count across all times. The top two reorders are "Banana" and "Bag of Organic Banana" at 16,557 and 13,362 respectively. Next are "Organic Strawberries", "Organic Baby Spinach", and "Organic Avocado" at approximately 6,000-8,000 in count.
+
+```{r}
+plot3 <-
+  train_n %>%
+  dplyr::group_by(product_name) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(product_name, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Product", y="Number of Reorders", 
+       title="Top 10 Reorders by Product", subtitle="Across All Times",
+       caption="Data from InstaCart Kaggle Competition")
+plot3
+```
+
+
+### d. Top 10 Reorders by `order_dow`
+
+> Generally, the weekends have the higest reorder count at 197,534 and 123,173 for Sunday and Saturday. Friday, Saturday, and Monday are in the range of 100-123 thousand. Tuesday, Thursday, and Wednesday are in the range of 90 thousand. 
+
+```{r}
+plot4 <-
+train_n %>%
+  dplyr::group_by(order_dow) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  head(n=10) %>%
+  na.omit() %>%
+  ggplot(aes(x=reorder(order_dow, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Day of the Week", y="Number of Reorders", 
+       title="Top 10 Reorders by Day of the Week", subtitle="",
+       caption="Data from InstaCart Kaggle Competition")
+plot4
+```
+
+
+### e. Top 10 Reorders by `order_dow` & `order_number`
+
+> `order_number` and `reordered` across product type is strongly positively correlated.
+
+```{r, include=FALSE}
+tem1 <- train_n %>%
+  dplyr::group_by(product_name) %>%
+  dplyr::summarize(n_order = sum(order_number),
+                   n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  na.omit()
+```
+
+```{r}
+cor(tem1$n_order, tem1$n_reordered)
+```
+
+```{r, include=FALSE}
+rm(tem1)
+```
+
+
+```{r}
+plot4.1 <-
+  train_n %>%
+  dplyr::group_by(product_name) %>%
+  dplyr::summarize(n_order = sum(order_number),
+                   n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  head(n=10) %>%
+  na.omit() %>%
+  ggplot(aes(x=reorder(product_name, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", position = "stack", aes(fill = n_order)) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Product Name", y="Number of Reorders", 
+       title="Top 10 Reorders", subtitle="by Day of the Week & Number of Orders",
+       caption="Data from InstaCart Kaggle Competition")
+plot4.1
+```
+
+### f. Reorder Percentage of Sales by Time of the Day
+
+> The reorder percentage of sales is the highest around 2pm. There is a slight spike at midnight as well. 
+
+```{r}
+plot4.2 <-
+  train_n %>%
+  mutate(reordered_perc = reordered/order_number) %>%
+  na.omit() %>%
+  ggplot() +
+  geom_bar(aes(x=order_hour_of_day, y=reordered_perc), 
+           stat = "identity", fill="dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Time of the Day", y="Reorder Percentage of Sales", 
+       title="Reorder Percentage of Sales", subtitle="by Time of the Day",
+       caption="Data from InstaCart Kaggle Competition")
+plot4.2
+```
+
+
+### g. Reorder Percentage of Sales by Day of the Week
+
+> The reorder percentage of sales is the highest on Sunday. Sunday is also the day with the most counts for both reorder and sales. Monday, Saturday, and Sunday follow. 
+!!! order
+
+```{r}
+plot4.3 <-
+  train_n %>%
+  mutate(reordered_perc = reordered/order_number) %>%
+  na.omit() %>%
+  ggplot(aes(x=reorder(order_dow, -reordered_perc), y=reordered_perc)) +
+  geom_bar(stat = "identity", fill="dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Day of the Week", y="Reorder Percentage of Sales", 
+       title="Reorder Percentage of Sales", subtitle="by Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+plot4.3
+```
+
+
+
+### h. Reorder Percentage of Sales by Time of the Day & Day of the Week
+
+> The reorder percentage of sales is the highest around 2pm on Sunday. There is a slight spike at midnight for each night.
+
+#### 1)
+
+```{r}
+plot4.4 <-
+  train_n %>%
+  mutate(reordered_perc = reordered/order_number) %>%
+  na.omit() %>%
+  ggplot(aes(x=order_hour_of_day, y=reordered_perc)) +
+  geom_bar(aes(fill=order_dow), stat = "identity") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Time of the Day", y="Reorder Percentage of Sales", 
+       title="Reorder Percentage of Sales", subtitle="by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+plot4.4
+```
+
+
+#### 2)
+
+```{r}
+plot4.5 <-
+  train_n %>%
+  mutate(reordered_perc = reordered/order_number) %>%
+  na.omit() %>%
+  ggplot(aes(x=order_hour_of_day, y=reordered_perc)) +
+  geom_bar(fill="dodgerblue2", stat = "identity") +
+  facet_wrap(~order_dow) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Time of the Day", y="Reorder Percentage of Sales", 
+       title="Reorder Percentage of Sales", subtitle="by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+plot4.5
+```
+
+***
+
+## **2. Top 10-30 Reorders by `product`, `aisle`, `department` & Time Variables: `order_dow` & `order_hour_of_day`**
+
+
+### a. Top 10 Reorders (product) by Day of Week
+
+> The reorders of Bananas on Friday, Monday, Saturday, Sunday, and Tuesday are within the top ten reorders with Sunday having almost the double the reorder counts on any other days. Four product types on Sunday fall within the top ten orders while reorders on Wednesdays and Thursdays are not within the top 10 reorders. Tuesdays and Fridays are the second least popular days for reorders. 
+
+```{r}
+plot5 <-
+  train_n %>%
+  dplyr::group_by(order_dow, product_name) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  arrange(desc(n_reordered)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(product_name, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  facet_wrap(~order_dow) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  labs(x="Product", y="Number of Reorders", 
+       title="Top 10 Reorders by Product", subtitle="by Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+plot5
+```
+
+
+
+### b. Most Popular Time for Reorders by Day of the Week
+
+>  Sunday at 2pm is the most popular time for reorders. Generally, 10am and 2:30pm are the most popular times, with Monday as one of the most pronounced example. There seems to be a slow-down time inbetween these two times. This pattern applies to Sunday as well. 
+
+```{r}
+plot5.1 <-
+  train_n %>%
+  na.omit() %>%
+  ggplot(aes(x=order_hour_of_day, y=reordered)) +
+  geom_bar(fill="dodgerblue2", stat = "identity") +
+  facet_wrap(~order_dow) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Time of the Day", y="Number of Reorders", 
+       title="Top 10 Reorders by Time of the Day & Day of the Week", 
+       caption="Data from InstaCart Kaggle Competition")
+plot5.1
+```
+
+
+### c. Compare Top Ten Reorders vs. Orders
+
+```{r}
+# Top Ten Reorders of All Times
+train_n %>%
+  dplyr::group_by(product_name) %>%
+  dplyr::summarize(n_order = sum(order_number)) %>%
+  dplyr::arrange(desc(n_order)) %>%
+  head(n=10) 
+
+# Top Ten Orders of All Times
+train_n %>%
+  dplyr::group_by(product_name) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  dplyr::arrange(desc(n_reordered)) %>%
+  head(n=10) 
+```
+
+
+### d. Top 30 Reorders by Day of Week & Aisle
+
+```{r}
+plot6 <-
+train_n %>%
+  dplyr::group_by(aisle, order_dow) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  dplyr::arrange(desc(n_reordered)) %>%
+  head(n=30) %>%
+  ggplot(aes(x=reorder(aisle, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", position = "stack", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  facet_wrap(~order_dow) +
+  labs(x="Aisle", y="Number of Reorders", 
+       title="Top 30 Reorders by Day of Week", subtitle="by Aisle",
+       caption="Data from InstaCart Kaggle Competition")
+plot6
+```
+
+
+### e. Top 30 Reorders by Day of Week & Department
+
+```{r}
+plot7 <-
+train_n %>%
+  dplyr::group_by(department, order_dow) %>%
+  dplyr::summarize(n_reordered = sum(reordered)) %>%
+  dplyr::arrange(desc(n_reordered)) %>%
+  head(n=30) %>%
+  ggplot(aes(x=reorder(department, -n_reordered), y=n_reordered)) +
+  geom_bar(stat = "identity", position = "stack", fill = "dodgerblue2") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
+  facet_wrap(~order_dow) +
+  labs(x="Department", y="Number of Reorders", 
+       title="Top 30 Reorders by Day of Week", subtitle="by Department",
+       caption="Data from InstaCart Kaggle Competition")
+plot7
+```
+
