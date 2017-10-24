@@ -102,11 +102,8 @@ orders <-
 Now we construct a visualization
 ```{r}
 orders %>%
-  group_by(order_id, days_since_prior_order) %>%
-  summarise(proportion_reordered = sum(reordered)/n()) %>%
-  ungroup() %>%
   group_by(days_since_prior_order) %>%
-  summarise(avg_proportion_reordered = mean(proportion_reordered)) %>%
+  summarise(avg_proportion_reordered = mean(reordered)) %>%
   ggplot(aes(x=days_since_prior_order, y=avg_proportion_reordered)) + geom_col(fill="seagreen4") + labs(title="How The Number Of Days Since Prior Order affects Proportion Of Items Reordered", x="Days Since Prior Order", y="Average Proportion of Items Reordered")
 ```
 As we can see from the plot above, in general, as the number of days since prior order increases the average proportion of items that are reorders decreases. This makes sense. If a users waits 30 days before using InstaCart again perhaps that is because the items they ordered last time were a dissapointment. They aren't likely to reorder those items again.
