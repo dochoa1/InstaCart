@@ -1,5 +1,5 @@
 ---
-title: "InstaCart Exploratory Analysis"
+title: "InstaCart Exploratory Analysis: Days Since Prior Order"
 author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
 knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
@@ -69,7 +69,16 @@ orders <- orders %>%
   filter(eval_set == "prior")
 ```
 
-# Average Number of Days Since Prior Order:
+
+# How Long Until Users Reorder?
+```{r warning=FALSE}
+orders %>%
+  ggplot(aes(x=days_since_prior_order)) + geom_histogram(stat="count", fill="seagreen4") + labs(title="Distribution of days_since_prior_order", x="Days Since Prior Order", y="Count") + scale_y_continuous(labels = comma)
+```
+From the visualization above we can see that most often users tend to order from InstaCart once every week (7 days). Interestingly, in second place is 30 days. Especially since the distribution of counts leading up to 30 is, in general, decreasing.
+
+
+# What is the Average Number of Days Since Prior Order?
 ```{r}
 (avgNum <-
   orders %>%
