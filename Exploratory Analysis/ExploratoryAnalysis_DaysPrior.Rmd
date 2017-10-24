@@ -30,6 +30,8 @@ options(htmltools.dir.version = FALSE)
 
 This file provides some exploratory analysis regarding the days_since_prior_order variable of the InstaCart data.
 
+We know from careful consideration of the order_dow and days_since_prior_order variables that the data for each user are from consecutive orders.
+
 # Reading in the data
 
 ```{r cache=TRUE}
@@ -37,14 +39,35 @@ orders <- read_csv("../Source/orders.csv") %>%
   mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
                             `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
 
-#order_products <- read_csv("../Source/order_products__prior.csv")
+order_products <- read_csv("../Source/order_products__prior.csv")
 ```
+
+# Preparing the data 
+
+## Randomly sampling the data
+
+We randomly sample the data because performing computations on the full dataset is expensive.
+
+Before sampling:
+  orders - 3.4 million rows  
+  order_products - 32.4 million rows
+  
+After sampling: 293 thousand rows
 
 ```{r}
-head(orders, 15)
-head(order_products, 12)
+random_users <- sample(unique(orders$user_id), 20000)
+orders <-
+  subset(orders, user_id %in% random_users)
 ```
 
+## Removing undesired rows
+
+Because we are primarily concerned with the `days_since_prior_order` variable we only want to consider those observations that have a value in that column. Furthermore, we only want to consider observations that are part of the `prior` evaluation set since that is the set which we will be building our model on.
+```{r}
+orders <- orders %>%
+  filter(!is.na(days_since_prior_order)) %>%
+  filter(eval_set == "prior")
+```
 
 # Average Number of Days Since Prior Order:
 ```{r}
@@ -54,18 +77,27 @@ head(order_products, 12)
   summarise(avg = mean(days_since_prior_order)))
 ```
 
-It seems that on average, an InstaCart user will go 12 days (rounding up) between orders.
+It seems that on average, an InstaCart user will go approximately 11 days  between orders.
 
 # How does time since last order affect the rate of reordering
 
+## Preparing the data
+
+We need to join our orders table with the order_products table to have access to the reordered variable.
 ```{r cache=TRUE}
-order_products %>%
-  left_join(orders, by="order_id")
-
+orders <- 
+  orders %>%
+  left_join(order_products, by="order_id")
 ```
 
+Now we construct a visualization
 ```{r}
-head(order_products, 12)
+orders %>%
+  group_by(order_id, days_since_prior_order) %>%
+  summarise(proportion_reordered = sum(reordered)/n()) %>%
+  ungroup() %>%
+  group_by(days_since_prior_order) %>%
+  summarise(avg_proportion_reordered = mean(proportion_reordered)) %>%
+  ggplot(aes(x=days_since_prior_order, y=avg_proportion_reordered)) + geom_col(fill="seagreen4") + labs(title="How The Number Of Days Since Prior Order affects Proportion Of Items Reordered", x="Days Since Prior Order", y="Average Proportion of Items Reordered")
 ```
-
-asdjfga
+As we can see from the plot above, in general, as the number of days since prior order increases the average proportion of items that are reorders decreases. This makes sense. If a users waits 30 days before using InstaCart again perhaps that is because the items they ordered last time were a dissapointment. They aren't likely to reorder those items again.
