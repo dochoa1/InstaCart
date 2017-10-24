@@ -38,8 +38,8 @@ We know from careful consideration of the order_dow and days_since_prior_order v
 orders <- read_csv("../Source/orders.csv") %>%
   mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
                             `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
-
 order_products <- read_csv("../Source/order_products__prior.csv")
+products <- read_csv("../Source/products.csv")
 ```
 
 # Preparing the data 
@@ -66,7 +66,9 @@ Because we are primarily concerned with the `days_since_prior_order` variable we
 ```{r}
 orders <- orders %>%
   filter(!is.na(days_since_prior_order)) %>%
-  filter(eval_set == "prior")
+  filter(eval_set == "prior") %>%
+  group_by(user_id) %>%
+  mutate(cumulative_days = cumsum(days_since_prior_order))  # This is going to come in useful later
 ```
 
 
@@ -75,7 +77,7 @@ orders <- orders %>%
 orders %>%
   ggplot(aes(x=days_since_prior_order)) + geom_histogram(stat="count", fill="seagreen4") + labs(title="Distribution of days_since_prior_order", x="Days Since Prior Order", y="Count") + scale_y_continuous(labels = comma)
 ```
-From the visualization above we can see that most often users tend to order from InstaCart once every week (7 days). Interestingly, in second place is 30 days. Especially since the distribution of counts leading up to 30 is, in general, decreasing.
+From the visualization above we can see that most often users tend to order from InstaCart once every week (7 days). Interestingly, in second place is once a month (30 days). At first this it perplexing since the distribution of counts leading up to 30 is, in general, decreasing. However, if we assume that all of the times that users wait > 30 days to reorder is coded as 30 in the dataset than this makes a lot more sense.
 
 
 # What is the Average Number of Days Since Prior Order?
@@ -94,16 +96,43 @@ It seems that on average, an InstaCart user will go approximately 11 days  betwe
 
 We need to join our orders table with the order_products table to have access to the reordered variable.
 ```{r cache=TRUE}
-orders <- 
+orders_products <- 
   orders %>%
   left_join(order_products, by="order_id")
 ```
 
 Now we construct a visualization
-```{r}
-orders %>%
+```{r warning=FALSE}
+orders_products %>%
   group_by(days_since_prior_order) %>%
   summarise(avg_proportion_reordered = mean(reordered)) %>%
   ggplot(aes(x=days_since_prior_order, y=avg_proportion_reordered)) + geom_col(fill="seagreen4") + labs(title="How The Number Of Days Since Prior Order affects Proportion Of Items Reordered", x="Days Since Prior Order", y="Average Proportion of Items Reordered")
 ```
 As we can see from the plot above, in general, as the number of days since prior order increases the average proportion of items that are reorders decreases. This makes sense. If a users waits 30 days before using InstaCart again perhaps that is because the items they ordered last time were a dissapointment. They aren't likely to reorder those items again.
+
+# On average, how long does it take each product to be reordered?
+
+## Preparing the data
+
+We are going to create a variable `days_since_product_last_ordered` across each user and take the average of that, `avg_days_since_product_last_ordered` across all observations.
+```{r}
+orders_products_daysSinceProductLastOrdered <-
+  orders_products %>%
+  group_by(user_id) %>%
+  mutate(days_since_product_last_ordered = ave(cumulative_days, product_id, FUN=function(x) c(0, diff(x)))) %>%
+  ungroup() %>%
+  filter(!days_since_product_last_ordered == 0) %>%  # Filter out first time buying item
+  group_by(product_id) %>%
+  summarise(avg_days_since_product_last_ordered = mean(days_since_product_last_ordered)) %>%
+  inner_join(products, by="product_id") %>%  # For product names
+  arrange(avg_days_since_product_last_ordered)
+```
+
+TODO: Make this prettier
+TODO: Requirment on number of orders? Too many 1's for top 20/100
+TODO: Talk about interesting findings
+```{r}
+ggplot(data=head(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text(aes(label=product_name), angle=35)
+
+ggplot(data=tail(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text(aes(label=product_name))
+```
