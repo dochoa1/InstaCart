@@ -22,6 +22,7 @@ output:
 library(tufte)
 library(tidyverse)
 library(ggplot2)
+library(ggrepel)
 library(lubridate)
 library(scales)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
@@ -55,6 +56,7 @@ Before sampling:
 After sampling: 293 thousand rows
 
 ```{r}
+set.seed(42)  # Allows for reproducable sample results
 random_users <- sample(unique(orders$user_id), 20000)
 orders <-
   subset(orders, user_id %in% random_users)
@@ -68,7 +70,8 @@ orders <- orders %>%
   filter(!is.na(days_since_prior_order)) %>%
   filter(eval_set == "prior") %>%
   group_by(user_id) %>%
-  mutate(cumulative_days = cumsum(days_since_prior_order))  # This is going to come in useful later
+  mutate(cumulative_days = cumsum(days_since_prior_order)) %>%  # This is going to come in useful later
+  ungroup()
 ```
 
 
@@ -82,10 +85,9 @@ From the visualization above we can see that most often users tend to order from
 
 # What is the Average Number of Days Since Prior Order?
 ```{r}
-(avgNum <-
-  orders %>%
+orders %>%
   filter(!is.na(days_since_prior_order)) %>%
-  summarise(avg = mean(days_since_prior_order)))
+  summarise(avg = mean(days_since_prior_order))
 ```
 
 It seems that on average, an InstaCart user will go approximately 11 days  between orders.
@@ -128,11 +130,17 @@ orders_products_daysSinceProductLastOrdered <-
   arrange(avg_days_since_product_last_ordered)
 ```
 
-TODO: Make this prettier
 TODO: Requirment on number of orders? Too many 1's for top 20/100
-TODO: Talk about interesting findings
 ```{r}
-ggplot(data=head(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text(aes(label=product_name), angle=35)
+ggplot(data=head(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Lowest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
 
-ggplot(data=tail(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text(aes(label=product_name))
+ggplot(data=tail(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Highest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
 ```
+
+We can see that the items that, on average, go the fewest days in between orders are characteriszed by:
+Candies, Ice Creams, Fruits, Tea, and Cheese.
+
+By comparison the items that, on average, go the fewest days in between orders are characteriszed by:
+Utility items: Coffee Filter Squares, Whitening Toothpaste, Seasoning, Designer Bowls, and Carpet Fresheners, as well as pills.
+
+This makes sense, most of the items that go the longest in between orders tend to last a long time, most don't have an expiration date. Whereas the items that go the shortest in between orders tend to expire quickly or be consumed quickly.
