@@ -1,0 +1,80 @@
+---
+title: "InstaCart Exploratory Analysis"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(scales)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+This file provides some exploratory analysis of the InstaCart data.
+
+```{r cache=TRUE}
+orders <- read_csv("../Source/orders.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+
+order_products_train <- read_csv("../Source/order_products__train.csv")
+
+products <- read_csv("../Source/products.csv")
+```
+
+
+# Reading in the data
+
+```{r}
+popular_products <- 
+  orders %>%
+  inner_join(order_products_train,by=c("order_id"="order_id")) %>%
+  group_by(product_id,order_hour_of_day) %>%
+  summarise(total_products_ordered=n()) %>%
+  arrange(desc(total_products_ordered)) %>%
+  left_join(products,by=c("product_id"="product_id"))
+popular_products 
+```
+
+```{r}
+banana <- 
+  popular_products %>%
+  filter(product_name=='Banana')
+ggplot(banana,aes(x=order_hour_of_day,y=total_products_ordered)) +
+  geom_point()
+```
+
+```{r}
+Large_Lemon <- 
+  popular_products %>%
+  filter(product_name=='Large Lemon')
+ggplot(Large_Lemon,aes(x=order_hour_of_day,y=total_products_ordered)) +
+  geom_point()
+```
+
+
+```{r}
+Organic_Avocado <- 
+  popular_products %>%
+  filter(product_name=='Organic Avocado')
+ggplot(Organic_Avocado,aes(x=order_hour_of_day,y=total_products_ordered)) +
+  geom_point()
+```
