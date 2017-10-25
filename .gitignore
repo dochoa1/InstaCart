@@ -9,6 +9,9 @@ order_products__train.csv
 orders.csv
 products.csv
 
+# RStudio Files
+.Rhistory
+
 # Cache Directories
 *_cache
 *_files
