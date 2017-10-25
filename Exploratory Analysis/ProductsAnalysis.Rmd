@@ -19,19 +19,21 @@ output:
     toc: no
 ---
 
-This file provides some exploratory analysis of the InstaCart data.
+This file provides some exploratory analysis of the InstaCart data products, aisles and departments.
 
 ```{r setup, include=FALSE}
 library(tufte)
 library(tidyverse)
 library(ggplot2)
 library(scales)
+library(reshape2)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
 
 # Reading in the data
 
+Instead of sampling, we will use the train data to explore the characteristics of products.
 
 ```{r cache=TRUE}
 aisles = read_csv("../Source/aisles.csv")
@@ -53,10 +55,131 @@ inventory <- warehouse%>%
   group_by(department,aisle)%>%
   summarise(total=n())
 
-orders_details_train <- left_join(order_products_train,products)
-
+orders_details_train <- left_join(order_products_train,warehouse)
 ```
 
-To be doing: Creating an adjacency matrix for co-appearance of aisles within an order --> Visualization with a network
+```{r, echo=FALSE}
+knitr::kable(
+  orders_details_train[1:6,], caption = 'A subset of the order details table'
+)
+```
 
 
+
+# Network Analysis for Aisles
+
+In this section, we are going to explore the network of aisles. The goal is to understand if an order of any item in an aisle should result in a suggestion of items in another aisles. We are doing so by seeing how often any pair of aisles appear in the same order. 
+
+First of all, we get a table of only information about order_id and aisle
+
+
+```{r}
+orders_aisles_train <- orders_details_train%>%
+  select(order_id,aisle)%>%
+  distinct(order_id,aisle)
+```
+
+Then, we need to create an adjacency matrix `aisle_adjacency` of co-appearance of aisles. Value of `aisle_adjacency[i,j]` indicates how many time aisle \i and \j appear in the same order:
+
+```{r cache=TRUE}
+# Convert the table of order_id and aisles_id into an incidence matrix
+aisle_incidence=as.matrix(table(cbind.data.frame(order=orders_aisles_train$order_id,aisle=c(orders_aisles_train$aisle))))
+# Multiple with its transpose to create the adjacency matrix for 
+aisle_adjacency=t(aisle_incidence)%*%aisle_incidence
+```
+
+```{r, echo=FALSE}
+knitr::kable(
+  aisle_adjacency[1:10,1:10], caption = 'A subset of the adjacency matrix'
+)
+```
+
+Next, we explore to see which aisles get ordered the most. Here are the top 20 ordered aisles, taking values from the diagonal of the adjacency matrix.
+
+```{r}
+aisle_appearance <- melt(diag(aisle_adjacency))
+top20_aisle <- aisle_appearance%>%
+  mutate(name=factor(row.names(aisle_appearance)))%>%
+  select(name,value)%>%
+  arrange(desc(value))%>%
+  head(n=20)
+```
+
+```{r, echo=FALSE}
+knitr::kable(
+  top20_aisle[,], caption = 'Top 20 Most Ordered Aisles'
+)
+```
+
+```{r, echo=FALSE}
+ggplot(top20_aisle,aes(x=reorder(name,top20_aisle$value),y=value))+
+  geom_col(position = "dodge")+
+  coord_flip()+
+  labs(
+    title="Top 20 Most Ordered Aisles",
+    y="Orders",
+    x="Aisle"
+  )
+```
+
+Now, we are going to visualize the adjacency matrix with a heat map. The first thing to do is to flatten the adjacency matrix into a table of 3 columns. The first two columns indicate the pair of value in the adjacency matrix (edge), and the third column stores the values of that pair (weigh of an edge)
+
+```{r}
+# Flatten the adjacency matrix to a weighted edgelist
+aisle_edgelist=melt(aisle_adjacency)
+cols <- which(names(aisle_edgelist) == 'aisle')
+names(aisle_edgelist)[cols] <- paste0('aisle', seq_along(cols))
+```
+
+```{r, echo=FALSE}
+knitr::kable(
+  aisle_edgelist[1:10,], caption = 'Sample Weighted Edge List'
+)
+```
+
+We will only visualize the adjacency matrix on the top 20 most ordered aisle
+
+```{r}
+# Select the top 20 most ordered aisle using factor
+top_aisle_edgelist <- aisle_edgelist%>%
+  mutate(
+        aisle1 = factor(aisle1, levels = top20_aisle$name),
+        aisle2 = factor(aisle2, levels = top20_aisle$name)
+        )
+# Get rid of NAs
+top_aisle_edgelist <- top_aisle_edgelist[complete.cases(top_aisle_edgelist),]
+```
+
+```{r, echo=FALSE}
+knitr::kable(
+  top_aisle_edgelist[1:10,], caption = 'Sample Weighted Edge List for Top 20 Aisle'
+)
+```
+
+Now, we visualize the adjacency matrix with a heat map using `geom_raster`
+
+```{r, echo=FALSE}
+ggplot(top_aisle_edgelist, aes(x = aisle1, y = aisle2, fill = value)) +
+  geom_raster() +
+  theme_linedraw(base_size=9)+
+  scale_fill_gradientn(colours=c("#FFFFFFFF","#FF0000FF")) +
+  guides(fill = guide_colorbar(barwidth = 0.4, barheight = 6))+
+  theme(
+    # Rotate the x-axis lables so they are legible
+    axis.text.x = element_text(angle = 270, hjust = 0),
+    # Force the plot into a square aspect ratio
+    aspect.ratio = 1,
+    #legend.text=element_text(size=0.1)
+    )+
+  labs(title="Co-appearances of Aisles in An Order",
+       subtitle="Top 20 Most Ordered Aisles",
+       x="",
+       y="",
+       fill="Count")
+```
+
+# Interpretation
+
+We could see from the heatmap that fresh fruits and fresh vegetables are the most ordered aisles from InstaCart. This makes lots of sense since people need these items fresh pretty frequently. We could also see that they often come together, and people don't usually just order these alone. Some other items that often go with the fresh items are `package vegetables fruits`, `yogurt`, `packaged cheese`, and `milk`.
+
+However, one weakness of this heatmap is that the value depends on the diagonal values. If one aisle gets ordered more, then it is quite likely that it would come with some other items. Thus, the next step would be to normalized all these items to see if the frequency change for these aisle. For example, if `fresh fruits` and `soft drinks` have the same total number of orders, which items are they likely to be paired with (or may be just themselves).
