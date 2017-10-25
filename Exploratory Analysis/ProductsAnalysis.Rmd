@@ -1,6 +1,6 @@
 ---
-title: "Products"
-author: "Hoang Anh Thai Vu"
+title: "InstaCart Exploratory Analysis: Products Analysis"
+author: "Hoang Anh Thai Vu, Daniel Ochoa, Qiuhan Sun, April Choi"
 date: "October 18, 2017"
 knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
@@ -31,23 +31,32 @@ options(htmltools.dir.version = FALSE)
 ```
 
 # Reading in the data
+
+
 ```{r cache=TRUE}
-aisles = read_csv("Final Project/Source/aisles.csv")
-departments = read_csv("Final Project/Source/departments.csv")
-products = read_csv("Final Project/Source/products.csv")
+aisles = read_csv("../Source/aisles.csv")
+departments = read_csv("../Source/departments.csv")
+products = read_csv("../Source/products.csv")
+order_products_train = read_csv("../Source/order_products__train.csv")
 ```
+
+# Preparing the data
 
 Merging all product related configure
 
-```{r}
+```{r cache=TRUE}
 warehouse <- products%>%
   left_join(departments)%>%
   left_join(aisles)
 
-sku <- warehouse%>%
+inventory <- warehouse%>%
   group_by(department,aisle)%>%
   summarise(total=n())
 
+orders_details_train <- left_join(order_products_train,products)
+
 ```
+
+To be doing: Creating an adjacency matrix for co-appearance of aisles within an order --> Visualization with a network
 
 
