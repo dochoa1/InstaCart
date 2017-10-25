@@ -21,9 +21,10 @@ output:
 ```{r setup, include=FALSE, cache=FALSE}
 library(tufte)
 library(tidyverse)
-library(ggplot2)
+library(dplyr)
 library(ggrepel)
 library(lubridate)
+library(stats)
 library(scales)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
@@ -33,7 +34,7 @@ This file provides some exploratory analysis regarding the days_since_prior_orde
 
 We know from careful consideration of the order_dow and days_since_prior_order variables that the data for each user are from consecutive orders.
 
-# Reading in the data
+# Reading In The Data
 
 ```{r cache=TRUE}
 orders <- read_csv("../Source/orders.csv") %>%
@@ -43,7 +44,7 @@ order_products <- read_csv("../Source/order_products__prior.csv")
 products <- read_csv("../Source/products.csv")
 ```
 
-# Preparing the data 
+# Preparing The Data 
 
 ## Randomly sampling the data
 
@@ -61,6 +62,7 @@ random_users <- sample(unique(orders$user_id), 20000)
 orders <-
   subset(orders, user_id %in% random_users)
 ```
+
 
 ## Removing undesired rows
 
@@ -100,7 +102,7 @@ We need to join our orders table with the order_products table to have access to
 ```{r cache=TRUE}
 orders_products <- 
   orders %>%
-  left_join(order_products, by="order_id")
+  dplyr::left_join(order_products, by="order_id")  # tidyverse left_join causes discrepancy between console and knit
 ```
 
 Now we construct a visualization
@@ -112,7 +114,7 @@ orders_products %>%
 ```
 As we can see from the plot above, in general, as the number of days since prior order increases the average proportion of items that are reorders decreases. This makes sense. If a users waits 30 days before using InstaCart again perhaps that is because the items they ordered last time were a dissapointment. They aren't likely to reorder those items again.
 
-# On average, how long does it take each product to be reordered?
+# On Average, How Long Does It Take Each Product To Be Reordered?
 
 ## Preparing the data
 
@@ -121,7 +123,7 @@ We are going to create a variable `days_since_product_last_ordered` across each 
 orders_products_daysSinceProductLastOrdered <-
   orders_products %>%
   group_by(user_id) %>%
-  mutate(days_since_product_last_ordered = ave(cumulative_days, product_id, FUN=function(x) c(0, diff(x)))) %>%
+  mutate(days_since_product_last_ordered = stats::ave(cumulative_days, product_id, FUN=function(x) c(0, diff(x)))) %>%
   ungroup() %>%
   filter(!days_since_product_last_ordered == 0) %>%  # Filter out first time buying item
   group_by(product_id) %>%
@@ -130,11 +132,17 @@ orders_products_daysSinceProductLastOrdered <-
   arrange(avg_days_since_product_last_ordered)
 ```
 
-TODO: Requirment on number of orders? Too many 1's for top 20/100
+Since we want to display the product names and we don't want a cluttered visualization we only consider the top and bottom 20 products.
 ```{r}
-ggplot(data=head(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Lowest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
+highest20 <- tail(orders_products_daysSinceProductLastOrdered, 20)
+lowest20 <- head(orders_products_daysSinceProductLastOrdered, 20)
+```
 
-ggplot(data=tail(orders_products_daysSinceProductLastOrdered, 20), aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Highest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
+TODO: Requirement on number of orders? Too many 1's for top 20/100
+```{r}
+ggplot(data=lowest20, aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Lowest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
+
+ggplot(data=highest20, aes(x=product_id, y=avg_days_since_product_last_ordered)) + geom_point(alpha=0.05) + geom_text_repel(aes(label=product_name), color="seagreen4") + labs(title="The 20 Products With The Highest Average Days Since Last Order", x="Product ID", y="Average Days Since Product Was Last Ordered")
 ```
 
 We can see that the items that, on average, go the fewest days in between orders are characteriszed by:
