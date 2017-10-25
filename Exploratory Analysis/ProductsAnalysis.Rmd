@@ -53,16 +53,18 @@ warehouse <- products%>%
 
 inventory <- warehouse%>%
   group_by(department,aisle)%>%
-  summarise(total=n())
+  summarise(total=n())%>%
+  arrange(desc(total))
 
 orders_details_train <- left_join(order_products_train,warehouse)
 ```
 
 ```{r, echo=FALSE}
 knitr::kable(
-  orders_details_train[1:6,], caption = 'A subset of the order details table'
+  inventory[1:10,], caption = 'Top 10 Aisles with The Most Variety of Products'
 )
 ```
+
 
 
 
@@ -113,7 +115,7 @@ knitr::kable(
 
 ```{r, echo=FALSE}
 ggplot(top20_aisle,aes(x=reorder(name,top20_aisle$value),y=value))+
-  geom_col(position = "dodge")+
+  geom_col(position = "dodge",fill="seagreen4")+
   coord_flip()+
   labs(
     title="Top 20 Most Ordered Aisles",
@@ -161,7 +163,7 @@ Now, we visualize the adjacency matrix with a heat map using `geom_raster`
 ```{r, echo=FALSE}
 ggplot(top_aisle_edgelist, aes(x = aisle1, y = aisle2, fill = value)) +
   geom_raster() +
-  theme_linedraw(base_size=9)+
+  theme_bw(base_size=9)+
   scale_fill_gradientn(colours=c("#FFFFFFFF","#FF0000FF")) +
   guides(fill = guide_colorbar(barwidth = 0.4, barheight = 6))+
   theme(
