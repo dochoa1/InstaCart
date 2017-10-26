@@ -2,7 +2,7 @@
 title: "InstaCart Exploratory Analysis: Reorders\n"
 author: "April Leclair"
 knit: (function(inputFile, encoding) {
-  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_Reorders_HTML_Output") })
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
 output:
   bookdown::tufte_html2:
     number_sections: no
@@ -93,7 +93,7 @@ rm(aisles, departments, order_products_prior, order_products_train, orders, prod
 
 ## Variable Names from the Train - New
 names(train_reord)
-```
+``` 
 
 
 
