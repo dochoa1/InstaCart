@@ -53,16 +53,10 @@ test <-
   filter(eval_set == "test") 
 
 order_products_train <- read_csv("../Source/order_products__train.csv")
-
 order_products_prior <- read_csv("../Source/order_products__prior.csv")
-
 products <- read_csv("../Source/products.csv")
-
 departments <- read_csv("../Source/departments.csv")
-
 aisles <- read_csv("../Source/aisles.csv")
-
-
 ```
 
 
@@ -84,9 +78,11 @@ names(products)
 prod_dept <- 
   products %>%
   left_join(departments, by = "department_id")
+
 prod_dept_aisle <-
   prod_dept %>%
   left_join(aisles, by = "aisle_id")
+
 names(prod_dept_aisle)
 
 
@@ -151,7 +147,8 @@ train_n %>%
   arrange(desc(n_reordered)) %>%
   head(n=10) %>%
   ggplot(aes(x=reorder(department, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  geom_bar(stat = "identity", fill = "seagreen4") +
+  scale_y_continuous(labels=comma) +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Department", y="Number of Reorders", 
@@ -196,7 +193,7 @@ plot3 <-
   arrange(desc(n_reordered)) %>%
   head(n=10) %>%
   ggplot(aes(x=reorder(product_name, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  geom_bar(stat = "identity", fill = "seagreen4") +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Product", y="Number of Reorders", 
@@ -219,7 +216,7 @@ train_n %>%
   head(n=10) %>%
   na.omit() %>%
   ggplot(aes(x=reorder(order_dow, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "dodgerblue2") +
+  geom_bar(stat = "identity", fill = "seagreen4") +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Day of the Week", y="Number of Reorders", 
