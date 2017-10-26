@@ -1,8 +1,8 @@
 ---
-title: "InstaCart Exploratory Analysis: Reorders\n"
+title: "InstaCart Exploratory Analysis: Reorders - Unshortened\n"
 author: "April Leclair"
 knit: (function(inputFile, encoding) {
-  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_Reorders_HTML_Output") })
 output:
   bookdown::tufte_html2:
     number_sections: no
@@ -32,29 +32,41 @@ options(htmltools.dir.version = FALSE)
 ```
 
 This file provides some exploratory analysis of the InstaCart data.
-
-
 # ***Reading in the Data - Shortened***
 
 ```{r, cache=TRUE}
-train <- read_csv("../Source/orders.csv") %>%
+orders <- read_csv("../Source/orders.csv") %>%
   mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
-                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday"))) %>%
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+prior <- 
+  orders %>%
+  filter(eval_set == "prior") 
+
+train <- 
+  orders %>%
   filter(eval_set == "train") 
 
+test <- 
+  orders %>%
+  filter(eval_set == "test") 
+
 order_products_train <- read_csv("../Source/order_products__train.csv")
+
 order_products_prior <- read_csv("../Source/order_products__prior.csv")
 
 products <- read_csv("../Source/products.csv")
+
 departments <- read_csv("../Source/departments.csv")
+
 aisles <- read_csv("../Source/aisles.csv")
+
 ```
 
 
 ## **Variable Names**
 
 ```{r}
-names(train)
+names(order)
 names(order_products_train)
 names(products)
 names(departments)
@@ -64,16 +76,14 @@ names(products)
 
 ## **New Data Tables**
 
-```{r, cache=TRUE, include=FALSE}
+```{r, cache=TRUE, include=FALSE, eval=FALSE}
 ## `products_n` = `products` + `departments` + `aisles`
 prod_dept <- 
   products %>%
   left_join(departments, by = "department_id")
-
 prod_dept_aisle <-
   prod_dept %>%
   left_join(aisles, by = "aisle_id")
-
 names(prod_dept_aisle)
 
 
@@ -81,25 +91,73 @@ names(prod_dept_aisle)
 prod_dept_aisle_orderid_t <-
   prod_dept_aisle %>%
   left_join(order_products_train, by = "product_id")
-train_reord <-
+train_n <-
   prod_dept_aisle_orderid_t %>%
-  left_join(train, by = "order_id") %>%
-  select(product_name, aisle, department, order_number, reordered, order_dow, order_hour_of_day)
-  
+  left_join(train, by = "order_id")
+
+
+## Prior Data - New
+# prod_dept_aisle_orderid_p <-
+#   prod_dept_aisle %>%
+#   left_join(order_products_prior, by = "product_id")
+# prior_n <-
+#   prod_dept_aisle_orderid_p %>%
+#   left_join(prior, by = "order_id")
+
 
 ## Clean
 rm(prod_dept, prod_dept_aisle, prod_dept_aisle_orderid_t)
 rm(aisles, departments, order_products_prior, order_products_train, orders, products, products_n)
 
+## Variable Names from the Train - New
+names(train_n)
+```
+
+
+## **New Data Tables - Shortened**
+
+```{r}
+## `products_n` = `products` + `departments` + `aisles`
+prod_dept <- 
+  products %>%
+  left_join(departments, by = "department_id")
+prod_dept_aisle <-
+  prod_dept %>%
+  left_join(aisles, by = "aisle_id")
+names(prod_dept_aisle)
+
+
+## Train Data - New
+prod_dept_aisle_orderid_t <-
+  prod_dept_aisle %>%
+  left_join(order_products_train, by = "product_id")
+train_n <-
+  prod_dept_aisle_orderid_t %>%
+  left_join(train, by = "order_id")
+
+
+## Prior Data - New
+# prod_dept_aisle_orderid_p <-
+#   prod_dept_aisle %>%
+#   left_join(order_products_prior, by = "product_id")
+# prior_n <-
+#   prod_dept_aisle_orderid_p %>%
+#   left_join(prior, by = "order_id")
+
+
+## Clean
+rm(prod_dept, prod_dept_aisle, prod_dept_aisle_orderid_t)
+rm(aisles, departments, order_products_prior, order_products_train, orders, products, products_n)
+
+train_reord <- train_n %>% 
+  select(product_name, aisle, department, reordered, order_dow, order_hour_of_day)
 
 ## Variable Names from the Train - New
-names(train_reord)
-``` 
-
+names(train_n)
+```
 
 
 ***
-
 
 
 # ***Basic Visualization***
@@ -124,8 +182,7 @@ plot1 <-
   arrange(desc(n_reordered)) %>%
   head(n=10) %>%
   ggplot(aes(x=reorder(department, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "seagreen4") +
-  scale_y_continuous(labels=comma) +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Department", y="Number of Reorders", 
@@ -170,7 +227,7 @@ plot3 <-
   arrange(desc(n_reordered)) %>%
   head(n=10) %>%
   ggplot(aes(x=reorder(product_name, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "seagreen4") +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Product", y="Number of Reorders", 
@@ -193,7 +250,7 @@ plot4 <-
   head(n=10) %>%
   na.omit() %>%
   ggplot(aes(x=reorder(order_dow, -n_reordered), y=n_reordered)) +
-  geom_bar(stat = "identity", fill = "seagreen4") +
+  geom_bar(stat = "identity", fill = "dodgerblue2") +
   theme(axis.text.x=element_text(angle=45,hjust=1)) +
   geom_text(aes(label = n_reordered), size = 3, vjust = -0.5) +
   labs(x="Day of the Week", y="Number of Reorders", 
