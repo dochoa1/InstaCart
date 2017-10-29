@@ -79,3 +79,12 @@ user29058 %>%
 ```
 
 This user has also spaced their orders across the day quite well. Their ordering window seems to open at 8am and close at 7pm. This makes sense with what is expected from a typical user. However, the orders within this time are not evenly distributed, they seem to be peaks and valleys with orders being made most often at 3pm.
+
+Finally, lets consider how ordering during the day is effected by which day of the week it is.
+```{r warning=FALSE}
+user29058_hourOfDay <-
+  user29058 %>%
+  ggplot(aes(x=order_hour_of_day)) + geom_histogram(stat="count", fill=fillColor) + labs(title="User 29058 Orders Across The Day By Weekday", x="Hour of the Day", y="Number of Orders")
+user29058_hourOfDay + facet_wrap( ~ order_dow, ncol=2)
+```
+From the above plots we can see that ordering trends do seem to differ from day to day. For instance, Wednesday orders tend to take place in the mornings while Sunday ordering tends to take place in the afternoon.
