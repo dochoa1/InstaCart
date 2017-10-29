@@ -1,0 +1,81 @@
+---
+title: "InstaCart Exploratory Analysis: Users"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(dplyr)
+library(scales)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+This file provides some exploratory analysis regarding users in the InstaCart data.
+
+# Setting Constants
+```{r}
+fillColor = "seagreen4"
+```
+
+# Reading In The Data
+
+```{r warning=FALSE}
+orders <- read_csv("../Source/orders_sample40.csv") %>%
+  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+order_products <- read_csv("../Source/order_products_sample40.csv")
+products <- read_csv("../Source/products.csv")
+```
+
+# Identifying Interesting Users
+
+We will begin with a randomly chosen user, perhaps not that interesting. 
+
+The maximum number of orders that any user can have is 100. We want as many data points as possible when we choose to evalute a specific user. Thus, we have limited out search to those users with 100 orders, there are 1374 of these.
+
+Now we will randomly pick on of these users, we picked user_id = 29058
+
+```{r}
+user29058 <-
+  orders %>%
+  filter(user_id == 29058) %>%
+  filter(eval_set == "prior")
+```
+
+## Day of Week and Hour of Day Analysis
+
+First lets look at which days this user mainly orders on.
+```{r}
+user29058 %>%
+  group_by(order_dow) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=order_dow, y=count)) + geom_bar(stat="identity", fill=fillColor) + labs(title="User 29058 Orders Across Days", x="Day of the Week", y="Number of Orders")
+```
+
+It seems like this user has spaced out their orders across the week quite well, however Saturday and Wednesday are both hot days.
+
+```{r}
+user29058 %>%
+  group_by(order_hour_of_day) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=order_hour_of_day, y=count)) + geom_col(fill=fillColor) + labs(title="User 29058 Orders Across The Day", x="Hour of the Day", y="Number of Orders")
+```
+
+This user has also spaced their orders across the day quite well. Their ordering window seems to open at 8am and close at 7pm. This makes sense with what is expected from a typical user. However, the orders within this time are not evenly distributed, they seem to be peaks and valleys with orders being made most often at 3pm.
