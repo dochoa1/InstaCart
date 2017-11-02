@@ -1,0 +1,9 @@
+```{r}
+library(tidyverse)
+```
+
+```{r}
+orders <- read_csv("../Source/orders_sample40.csv")
+products <- read_csv("../Source/order_products_sample40.csv")
+```
+
