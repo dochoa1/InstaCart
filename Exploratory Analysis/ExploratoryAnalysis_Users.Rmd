@@ -65,7 +65,7 @@ user29058 <-
 ## Day of Week and Hour of Day Analysis
 
 First lets look at which days this user mainly orders on.
-```{r}
+```{r echo=FALSE}
 user29058 %>%
   group_by(order_dow) %>%
   summarise(count = n()) %>%
@@ -74,7 +74,7 @@ user29058 %>%
 
 It seems like this user has spaced out their orders across the week quite well, however Saturday and Wednesday are both hot days.
 
-```{r}
+```{r echo=FALSE}
 user29058 %>%
   group_by(order_hour_of_day) %>%
   summarise(count = n()) %>%
@@ -97,7 +97,7 @@ From the above plots we can see that ordering trends do seem to differ from day 
 
 First we need to join the relevant tables.
 ```{r}
-user29058 <-
+user29058_product <-
   user29058 %>%
   left_join(order_products, by="order_id") %>%
   left_join(products, by="product_id") %>%
@@ -108,13 +108,12 @@ user29058 <-
 ### Product Distribution By Count
 ```{r}
 user29058_top20Products <-
-  user29058 %>%
+  user29058_product %>%
   group_by(product_name) %>%
   summarise(count = n()) %>%
-  arrange(desc(count)) %>%
-  head(20)
+  arrange(desc(count))
   
-ggplot(data = user29058_top20Products, aes(x=product_name, y=count)) + geom_col(fill=fillColor) + coord_flip() + labs(title="User 29058 Top 20 Products Ordered", x="Product", y="Count")
+ggplot(data = head(user29058_top20Products,20), aes(x=product_name, y=count)) + geom_col(fill=fillColor) + coord_flip() + labs(title="User 29058 Top 20 Products Ordered", x="Product", y="Count")
 ```
 It seems like this user is particularly health concious, ordering mainly organic fruits and vegetables.
 
@@ -124,24 +123,60 @@ First we are going to look at this user's density distribution by department by 
 
 ```{r}
 user29058_Departments <-
-  user29058 %>%
+  user29058_product %>%
   group_by(department) %>%
   summarise(count = n()) %>%
   arrange(desc(count))
 ```
 
 First lets look at the distribution of departments.
-```{r}
+```{r echo=FALSE}
 ggplot(data=user29058_Departments, aes(x=department, y=count)) + geom_col(fill=fillColor) + coord_flip() + labs(title="User 29058 Top Departments", x="Department", y="Count")
 ```
 
 Now how about the distribution of departments over the day?
 
 We are going to want to filter out the departments without many total orders. We also don't want out graph to be too cluttered so we'll only consider the top 10 departments.
-```{r}
-user29058 %>%
+```{r echo=FALSE}
+user29058_product %>%
   filter(department %in% head(user29058_Departments$department, 10)) %>%
   ggplot(aes(x=order_hour_of_day, group=department, colour=department)) + geom_density() + xlim(1,23) + labs(title="Product Density by Department", x="Hour of Day", y="Density")
 ```
 
 We can see from the density plots that are few departments stand out. `Breakfast` has an enormous portion of its products ordered around 3pm, a popular time for most products but the proportion of breakfast items ordered then definitely stands out. We can also see that `dry goods pasta` has its largest proportion of orders far later than most other departments at around 5pm. In a similar vein we can see that `personal care` has its largest proportion of orders far earlier than most other departments at around 8am.
+
+## Days Since Prior Order Analysis
+
+### Distribution of Days Since Prior Order
+
+Lets begin by looking at how often this user makes orders on InstaCart.
+```{r warning=FALSE,echo=FALSE}
+user29058_daysSincePrior <-
+  user29058 %>%
+  group_by(days_since_prior_order) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+ggplot(data=user29058_daysSincePrior, aes(x=days_since_prior_order, y=count)) + geom_col(fill=fillColor) + labs(title="User 29058 Distribution of Orders by Days Since Prior Order", x="Days Since Prior Order", y="Count")
+```
+
+#### Comparing Products Ordered After A Typical Number of Days and after an Atypical Number of Days (Not Completed)
+
+```{r}
+user29058_daysSincePrior
+```
+
+```{r}
+user29058_product %>%
+  filter(days_since_prior_order %in% head(user29058_daysSincePrior$days_since_prior_order, 5)) %>%
+  group_by(product_name) %>%
+  summarise(count=n()) %>%
+  arrange(desc(count))
+
+user29058_product %>%
+  filter(days_since_prior_order %in% tail(user29058_daysSincePrior$days_since_prior_order, 5)) %>%
+  group_by(product_name) %>%
+  summarise(count=n()) %>%
+  arrange(desc(count))
+```
+
