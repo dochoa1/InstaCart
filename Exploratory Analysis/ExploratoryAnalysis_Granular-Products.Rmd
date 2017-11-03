@@ -1,0 +1,624 @@
+---
+title: "InstaCart Exploratory Analysis: Product"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "November 2, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "ExploratoryAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(scales)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, warning = FALSE, 
+                      cache.lazy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+This file provides a more specific exploratory analysis regarding the product variable of the InstaCart data.
+
+# ***Reading in the New Data***
+
+```{r, cache=TRUE}
+orders_comp <- read_csv("../Source/orders_priorn.csv")
+```
+
+## Removing Undesired Rows & Ordering Factor Variables
+
+```{r, cache=TRUE}
+orders <- orders_comp %>%
+  mutate(order_dow = recode_factor(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday", `3`="Wednesday",
+                                   `4`="Thursday", `5`="Friday", `6`="Saturday"),
+         order_hour_of_day = factor(orders_comp$order_hour_of_day,
+                                    levels=c("00", "01", "02", "03", "04",
+                                             "05", "06", "07", "08", "09",
+                                             "10", "11", "12", "13", "14",
+                                             "15", "16", "17", "18", "19",
+                                             "20", "21", "22", "23", "24"))) %>%
+  select(-X1, order_dow, order_hour_of_day, product_name, aisle, department,
+         user_id, order_id, order_number, reordered, add_to_cart_order, days_since_prior_order) 
+```
+
+# ***Visualizations: Products***
+
+## Product Focus: `Bananas`
+
+### 1a) Orders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name=="Banana") %>%
+  group_by(order_dow) %>%
+  summarize(order_n = sum(order_number)) %>%
+  arrange(desc(order_n)) %>%
+  ggplot(aes(x=order_dow, y=order_n)) + 
+  geom_bar(stat="identity",fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=order_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Orders of Banana by Day of the Week",  
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### 1b) Reorders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name=="Banana") %>%
+  group_by(order_dow) %>%
+  summarize(reorder_n = sum(reordered)) %>%
+  arrange(desc(reorder_n)) %>%
+  ggplot(aes(x=order_dow, y=reorder_n)) + 
+  geom_bar(stat="identity",fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=reorder_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Reorders of Banana by Day of the Week",  
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### 1c) Orders & Reorders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Banana",
+         !is.na(order_dow)) %>%
+  group_by(order_dow) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  ggplot(aes(x=order_dow, y=order_n, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=order_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Orders & Reorders of Banana by Day of the Week",  
+       fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1d) Orders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number)) %>%
+  ggplot(aes(x=order_hour_of_day, y=order_n)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Orders of Banana by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1e) Reorders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(reorder_n = sum(reordered)) %>%
+  ggplot(aes(x=order_hour_of_day, y=reorder_n)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Reorders of Banana by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1g) Orders & Reorders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Banana",
+         !is.na(order_dow)) %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  ggplot(aes(x=order_hour_of_day, y=order_n, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Orders & Reorders of Banana by Time of the Day & Day of the Week",
+       fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1h) Reorder-Order Ratio by Time of the Day & Day of the Week
+
+### A)
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=order_hour_of_day, y=reord_ord)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Reorder-Order Ratio",
+       title="Reorder-Order Ratio of Banana by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### B)
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=order_hour_of_day, y=reord_ord, fill=order_dow)) + 
+  geom_bar(stat="identity") + 
+  labs(x="Time of the Day", y="Reorder-Order Ratio",
+       title="Reorder-Order Ratio of Banana by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1i) The Reorder-Order Ratio of Top 10 Users with the Highest Banana Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=10) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Reorder-Order Ratio of Top 10 Users with the Highest Banana Orders",
+       subtitle="",
+       x="User ID", y="Reorder-Order Ratio",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1j) The Top 10 Reorder-Order Ratio Among the Top 300 Users with the Highest Banana Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=300) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Top 10 Reorder-Order Ratio",
+       subtitle="Among the Top 300 Users with the Highest Banana Orders",
+       x="User ID", y="Reorder-Order Ratio", fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1k) The Top 10 Reorder-Order Ratio Among the Top 600 Users with the Highest Banana Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=600) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Top 10 Reorder-Order Ratio",
+       subtitle="Among the Top 600 Users with the Highest Banana Orders",
+       x="User ID", y="Reorder-Order Ratio", fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 1l) The Top 10 Reorder-Order Ratio Among the Top 900 Users with the Highest Banana Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Banana") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=900) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Top 10 Reorder-Order Ratio",
+       subtitle="Among the Top 900 Users with the Highest Banana Orders",
+       x="User ID", y="Reorder-Order Ratio", fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## Product Focus: `Avocados`
+
+### 2a) Orders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name=="Avocado") %>%
+  group_by(order_dow) %>%
+  summarize(order_n = sum(order_number)) %>%
+  arrange(desc(order_n)) %>%
+  ggplot(aes(x=order_dow, y=order_n)) + 
+  geom_bar(stat="identity",fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=order_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Orders of Avocado by Day of the Week",  
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### 2b) Reorders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name=="Avocado") %>%
+  group_by(order_dow) %>%
+  summarize(reorder_n = sum(reordered)) %>%
+  arrange(desc(reorder_n)) %>%
+  ggplot(aes(x=order_dow, y=reorder_n)) + 
+  geom_bar(stat="identity",fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=reorder_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Reorders of Avocado by Day of the Week",  
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### 2c) Orders & Reorders by Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado",
+         !is.na(order_dow)) %>%
+  group_by(order_dow) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  ggplot(aes(x=order_dow, y=order_n, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=order_n), size=3, vjust=-0.5) +
+  labs(x="Day of the Week", y="Count",
+       title="Orders & Reorders of Avocado by Day of the Week",  
+       fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2d) Orders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number)) %>%
+  ggplot(aes(x=order_hour_of_day, y=order_n)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Orders of Avocado by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2e) Reorders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(reorder_n = sum(reordered)) %>%
+  ggplot(aes(x=order_hour_of_day, y=reorder_n)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Reorders of Avocado by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2g) Orders & Reorders by Time of the Day & Day of the Week
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado",
+         !is.na(order_dow)) %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  ggplot(aes(x=order_hour_of_day, y=order_n, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Count",
+       title="Orders & Reorders of Avocado by Time of the Day & Day of the Week",
+       fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2h) Reorder-Order Ratio by Time of the Day & Day of the Week
+
+### A)
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=order_hour_of_day, y=reord_ord)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  facet_wrap(~order_dow) +
+  labs(x="Time of the Day", y="Reorder-Order Ratio",
+       title="Reorder-Order Ratio of Avocado by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+### B)
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=order_hour_of_day, y=reord_ord, fill=order_dow)) + 
+  geom_bar(stat="identity") + 
+  labs(x="Time of the Day", y="Reorder-Order Ratio",
+       title="Reorder-Order Ratio of Avocado by Time of the Day & Day of the Week",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2i) The Reorder-Order Ratio of Top 10 Users with the Highest Avocado Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=10) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord)) + 
+  geom_bar(stat="identity", fill="seagreen4") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Reorder-Order Ratio of Top 10 Users with the Highest Avocado Orders",
+       subtitle="",
+       x="User ID", y="Reorder-Order Ratio",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## 2j) The Top 10 Reorder-Order Ratio Among the Top 300 Users with the Highest Avocado Orders
+
+```{r}
+orders %>%
+  filter(product_name == "Avocado") %>%
+  group_by(user_id) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n)) %>%
+  head(n=300) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(n=10) %>%
+  ggplot(aes(x=reorder(user_id, -reord_ord), y=reord_ord, fill=reorder_n)) + 
+  geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=format(round(reord_ord,4), nsmall=4)), size=3, vjust=-0.5) +
+  labs(title="The Top 10 Reorder-Order Ratio",
+       subtitle="Among the Top 300 Users with the Highest Avocado Orders",
+       x="User ID", y="Reorder-Order Ratio", fill="Reorders",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+600 and 900 users with the highest avocado order was skipped because they did not differ from the plot given by the 300 users with the highest avocado order.
+
+## Focus on: More with Reorder-Order Ratio
+
+## 3a) The Top 10 Reorder-Order Ratio Among the Top 300 Product Name & Department Pair with the Highest Reorders by Department
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(reorder_n)) %>%
+  head(300) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label=reorder_n, nsmall=4, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="The Top 10 Reorder-Order Ratio", 
+     subtitle="Among the Top 300 Product Name & Department Pair with the Highest Reorders by Department",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
+## 3b) The Top 10 Reorder-Order Ratio Among the Top 600 Product Name & Department Pair with the Highest Reorders by Department
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(reorder_n)) %>%
+  head(600) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = reorder_n, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="The Top 10 Reorder-Order Ratio", 
+     subtitle="Among the Top 600 Product Name & Department Pair with the Highest Reorders by Department",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
+## 3c) The Top 10 Reorder-Order Ratio Among the Top 900 Product Name & Department Pair with the Highest Reorders by Department
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(reorder_n)) %>%
+  head(900) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = reorder_n, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="The Top 10 Reorder-Order Ratio", 
+     subtitle="Among the Top 900 Product Name & Department Pair with the Highest Reorders by Department",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
+## Focus on: The Logical Cut-off Method
+
+## 4a) A Logical Cutoff for `order_n` & `reorder_n`
+```{r}
+tem <- orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  arrange(desc(order_n))
+
+print(lst(min_n = min(tem$order_n), max_n = max(tem$order_n),
+          min_reo = min(tem$reorder_n), max_reo = max(tem$reorder_n),
+          sd1_high_n = mean(tem$order_n)+sd(tem$order_n),
+          sd2_high_n = mean(tem$order_n)+2*sd(tem$order_n),
+          sd3_high_n = mean(tem$order_n)+3*sd(tem$order_n),
+          sd1_high_reo = mean(tem$reorder_n)+sd(tem$reorder_n),
+          sd2_high_reo = mean(tem$reorder_n)+2*sd(tem$reorder_n),
+          sd3_high_reo = mean(tem$reorder_n)+3*sd(tem$reorder_n)))
+
+writeLines("The logical cutoff (+1 sd) for order_n is 19719, and that for reorder_n is 804. \nThe logical cutoff (+2 sd) for order_n is 37123, and that for reorder_n is 1528. \nThe logical cutoff (+3 sd) for order_n is 54527, and that for reorder_n is 2251.")
+
+# alternative
+# cat("The logical cutoff (+1 sd) for order_n is 19719, and that for reorder_n is 804. \nThe logical cutoff (+2 sd) for order_n is 37123, and that for reorder_n is 1528. \nThe logical cutoff (+3 sd) for order_n is 54527, and that for reorder_n is 2251.")
+
+rm(sd3_low_n, sd2_low_n, sd1_low_n, sd1_high_n, sd2_high_n, sd3_high_n)
+rm(sd3_low_reo, sd2_low_reo, sd1_low_reo, sd1_high_reo, sd2_high_reo, sd3_high_reo)
+```
+
+## 4b) Top 10 Reorder-Order Ratio by Products & Department with a +1 sd cutoff for `order_n`
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  filter(order_n >= 19719) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = reorder_n, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="Top Reorder-Order Ratio by Product & Department", subtitle="Cutoff = +1 sd",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
+## 4c) Focus on: Top 10 Reorder-Order Ratio by Products & Department with a +2 sd cutoff for `order_n`
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  filter(order_n >= 37123) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = reorder_n, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="Top Reorder-Order Ratio by Product & Department", subtitle="Cutoff = +2 sd",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
+## 4d) Focus on: Top 10 Reorder-Order Ratio by Products & Department with a +3 sd cutoff for `order_n`
+
+```{r}
+orders %>%
+  group_by(product_name, department) %>%
+  summarize(order_n = sum(order_number),
+            reorder_n = sum(reordered)) %>%
+  filter(order_n >= 54527) %>%
+  mutate(reord_ord = reorder_n/order_n) %>%
+  arrange(desc(reord_ord)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(product_name, -reord_ord), y = reord_ord, fill = department)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = reorder_n, vjust = -0.5)) +
+  labs(x="Product Name", y="Reorder-Order Ratio", 
+     title="Top Reorder-Order Ratio by Product & Department", subtitle="Cutoff = +3 sd",
+     fill="Department", caption="Data from InstaCart Kaggle Competition")
+```
+
