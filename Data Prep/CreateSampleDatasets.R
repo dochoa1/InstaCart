@@ -3,29 +3,49 @@
 
 library(tidyverse)
 
-# Reading in the original data
-orders <- read_csv("../Source/orders.csv") %>%
-  mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
-                                         `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
 
+# Reading in the original data
+prior <- read_csv("../Source/orders.csv") %>%
+  filter(eval_set == "prior") 
 order_products <- read_csv("../Source/order_products__prior.csv")
+products <- read_csv("../Source/products.csv")
+departments <- read_csv("../Source/departments.csv")
+aisles <- read_csv("../Source/aisles.csv")
+
+
 
 # Randomly sampling the data
 set.seed(42)  # Allows for reproducable sample results
-random_users <- sample(unique(orders$user_id), 40000)  #40000 users are randomly chosen (~20% sample)
-orders_sample40 <-
-  subset(orders, user_id %in% random_users)
+random_users <- sample(unique(prior$user_id), 40000)  #40000 users are randomly chosen (~20% sample)
+
+prior_sample40 <-
+  subset(prior, user_id %in% random_users)
 
 order_products_sample40 <-
-  subset(order_products, order_id %in% unique(orders_sample40$order_id))
+  subset(order_products, order_id %in% unique(prior_sample40$order_id))
+
+
+orders_priorn <- 
+  prior_sample40 %>%
+  left_join(order_products_sample40, by = "order_id") %>%
+  left_join(products, by = "product_id") %>%
+  left_join(departments, by = "department_id") %>%
+  left_join(aisles, by = "aisle_id") %>%
+  select(order_dow, order_hour_of_day, 
+         product_name, aisle, department, 
+         user_id, order_id, order_number, 
+         reordered, add_to_cart_order, days_since_prior_order) 
+
+names(orders_priorn)
+nrow(orders_priorn)
 
 # Before sampling:
-#   orders - 3.4 million rows  
+#   prior - 3.2 million rows  
 #   order_products - 32.4 million rows
 
 #After sampling:
-#   orders - 660 thousand rows
+#   orders - 620 thousand rows
 #   order_products - 6.23 million rows
 
-write.csv(orders_sample40, "../Source/orders_sample40.csv")
-write.csv(order_products_sample40, "../Source/order_products_sample40.csv")
+write.csv(prior_sample40, "../Source/prior_sample40.csv")
+write.csv(orders_priorn, "../Source/orders_priorn.csv")
