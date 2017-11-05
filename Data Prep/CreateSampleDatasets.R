@@ -24,8 +24,7 @@ prior_sample40 <-
 order_products_sample40 <-
   subset(order_products, order_id %in% unique(prior_sample40$order_id))
 
-
-orders_full40 <- 
+orders_full40_tem <- 
   prior_sample40 %>%
   left_join(order_products_sample40, by = "order_id") %>%
   left_join(products, by = "product_id") %>%
@@ -34,25 +33,32 @@ orders_full40 <-
   select(order_dow, order_hour_of_day, 
          product_name, aisle, department, 
          user_id, order_id, order_number, 
-         reordered, add_to_cart_order, days_since_prior_order) %>%
+         reordered, add_to_cart_order, days_since_prior_order) 
+orders_full40 <- 
+  orders_full40_tem %>%
   mutate(order_dow = recode_factor(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday", `3`="Wednesday",
                                    `4`="Thursday", `5`="Friday", `6`="Saturday"),
-         order_hour_of_day = factor(prior_sample40$order_hour_of_day,
+         order_hour_of_day = factor(order_hour_of_day,
                                     levels=c("00", "01", "02", "03", "04",
                                              "05", "06", "07", "08", "09",
                                              "10", "11", "12", "13", "14",
                                              "15", "16", "17", "18", "19",
                                              "20", "21", "22", "23", "24"))) 
 
-
+# Before & After Analysis
 # Before sampling:
 #   prior - 3.2 million rows  
 #   order_products - 32.4 million rows
-
-#After sampling:
-#   orders - 620 thousand rows
+# After sampling:
+#   prior - 620 thousand rows
 #   order_products - 6.23 million rows
 
+
+# Clean
+rm(random_users, orders_full40_tem)
+
+
+# Write
 write.csv(prior_sample40, "../Source/prior_sample40.csv")
 write.csv(order_products_sample40, "order_products_sample40")
 write.csv(orders_full40, "../Source/orders_full40.csv")
