@@ -33,13 +33,13 @@ options(htmltools.dir.version = FALSE)
 
 # Reading in the data
 
-Instead of sampling, we will use the train data to explore the characteristics of products.
+Instead of sampling, we will use the sample40 data to explore the characteristics of products.
 
 ```{r cache=TRUE}
 aisles = read_csv("../Source/aisles.csv")
 departments = read_csv("../Source/departments.csv")
 products = read_csv("../Source/products.csv")
-order_products_train = read_csv("../Source/order_products__train.csv")
+order_products_sample40 = read_csv("../Source/order_products_sample40.csv")
 ```
 
 # Preparing the data
@@ -56,7 +56,7 @@ inventory <- warehouse%>%
   summarise(total=n())%>%
   arrange(desc(total))
 
-orders_details_train <- left_join(order_products_train,warehouse)
+orders_details_sample40 <- left_join(order_products_sample40,warehouse)
 ```
 
 ```{r, echo=FALSE}
@@ -76,7 +76,7 @@ First of all, we get a table of only information about order_id and aisle
 
 
 ```{r}
-orders_aisles_train <- orders_details_train%>%
+orders_aisles_sample40 <- orders_details_sample40%>%
   select(order_id,aisle)%>%
   distinct(order_id,aisle)
 ```
@@ -85,7 +85,7 @@ Then, we need to create an adjacency matrix `aisle_adjacency` of co-appearance o
 
 ```{r cache=TRUE}
 # Convert the table of order_id and aisles_id into an incidence matrix
-aisle_incidence=as.matrix(table(cbind.data.frame(order=orders_aisles_train$order_id,aisle=c(orders_aisles_train$aisle))))
+aisle_incidence=as.matrix(table(cbind.data.frame(order=orders_aisles_sample40$order_id,aisle=c(orders_aisles_sample40$aisle))))
 # Multiple with its transpose to create the adjacency matrix for 
 aisle_adjacency=t(aisle_incidence)%*%aisle_incidence
 ```

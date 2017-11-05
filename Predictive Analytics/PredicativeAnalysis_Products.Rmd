@@ -1,0 +1,68 @@
+---
+title: "InstaCart Predictive Analysis: Products"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+
+
+This file provides some exploratory analysis of the InstaCart data products, aisles and departments.
+
+```{r setup, include=FALSE}
+library(tufte)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(reshape2)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+# Reading in the data
+
+Instead of sampling, we will use the sample40 data to explore the characteristics of products.
+
+```{r cache=TRUE}
+aisles = read_csv("../Source/aisles.csv")
+departments = read_csv("../Source/departments.csv")
+products = read_csv("../Source/products.csv")
+order_products_sample40 = read_csv("../Source/order_products_sample40.csv")
+orders_sample40 = read_csv("../Source/orders_sample40.csv")
+```
+
+# Preparing the data
+
+Merging all product related configure
+
+```{r cache=TRUE}
+warehouse <- products%>%
+  left_join(departments)%>%
+  left_join(aisles)
+
+inventory <- warehouse%>%
+  group_by(department,aisle)%>%
+  summarise(total=n())%>%
+  arrange(desc(total))
+
+orders_details_sample40 <- left_join(order_products_sample40,warehouse)
+
+top_users <- orders_sample40 %>%
+  group_by(user_id)%>%
+  summarise(total_orders=n(),total_days=sum(days_since_prior_order))%>%
+  arrange(desc(total_orders))
+  
+```
