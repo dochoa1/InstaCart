@@ -7,3 +7,41 @@ orders <- read_csv("../Source/orders_sample40.csv")
 products <- read_csv("../Source/order_products_sample40.csv")
 ```
 
+```{r}
+num_of_orders <- orders%>%
+group_by(user_id)%>%
+summarise(num_of_orders=n())
+num_of_orders
+```
+
+```{r}
+orders <- orders%>%
+left_join(num_of_orders)
+orders
+```
+
+```{r}
+lm(num_of_orders ~ order_dow + order_hour_of_day+days_since_prior_order, orders)
+```
+
+```{r}
+ggplot(orders,aes(y=num_of_orders,x=days_since_prior_order,color=order_dow)) +
+geom_smooth(method='lm')
+```
+
+```{r}
+library(randomForest)
+randomForest(num_of_orders ~ order_dow + order_hour_of_day+days_since_prior_order, orders)
+```
+
+```{r}
+orders %>%
+left_join(products,by="order_id")
+```
+
+
+
+
+
+
+
