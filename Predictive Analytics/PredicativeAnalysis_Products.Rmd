@@ -40,13 +40,36 @@ Instead of sampling, we will use the sample40 data to explore the characteristic
 aisles = read_csv("../Source/aisles.csv")
 departments = read_csv("../Source/departments.csv")
 products = read_csv("../Source/products.csv")
-order_products_sample40 = read_csv("../Source/order_products_sample40.csv")
-orders_sample40 = read_csv("../Source/orders_sample40.csv")
+order_products_prior40 <- read_csv("../Source/order_products_sample40.csv") %>%
+  subset(select=-X1)
+order_products_train <- read_csv("../Source/order_products__train.csv")
+orders40 = read_csv("../Source/orders_sample40.csv")
 ```
 
-# Preparing the data
+# Preparing the data for training
 
-Merging all product related configure
+Filtering out only priors data for train subset
+
+```{r}
+# Filter out the orders would lead the final evaluation of 'train' (instead of test eval)
+train_users <- subset(orders40,eval_set=='train')
+orders40_train <- orders40%>%
+  filter(user_id %in% train_users$user_id)
+# Prios data for train set
+order_products_trprior40 <- subset(order_products_prior40, order_id %in% unique(orders40_train$order_id))
+
+```
+
+Create the testing data from training set
+
+```{r cache=TRUE}
+order_products_train40 <- subset(order_products_train, order_id %in% unique(orders40$order_id))
+
+# Remove excess datasets
+rm(order_products_train,order_products_prior40,orders40)
+```
+
+# Merging all product related configure
 
 ```{r cache=TRUE}
 warehouse <- products%>%
@@ -58,11 +81,44 @@ inventory <- warehouse%>%
   summarise(total=n())%>%
   arrange(desc(total))
 
-orders_details_sample40 <- left_join(order_products_sample40,warehouse)
+orders_details_trprior40 <- left_join(order_products_trprior40,warehouse)
+```
 
-top_users <- orders_sample40 %>%
+# Choosing one specific user to conduct analysis
+
+We are going to look at the behaviors of one particular user to conduct a predictive analysis on the products he/she would order.
+
+First of all, let's take a look at the users ranked by the number of orders they have made in the sample set. Note that due to the way InstaCart selected these dataset, the number of orders for each user range from 4 to 100. 
+
+```{r cache=TRUE}
+top_users <- orders40_train %>%
   group_by(user_id)%>%
   summarise(total_orders=n(),total_days=sum(days_since_prior_order))%>%
   arrange(desc(total_orders))
-  
 ```
+
+```{r, echo=FALSE}
+knitr::kable(
+  top_users[1:20,], caption = 'Top 20 Users with Most Orders'
+)
+```
+
+We are going to look at the first one that showed up: the user with `user_id` of 210
+
+```{r}
+user210_orders <- subset(orders40_train,user_id==210)
+user210_products_prior <- subset(order_products_trprior40,order_id %in% user210_orders$order_id)
+user210_products_train <- subset(order_products_train40,order_id %in% user210_orders$order_id)  
+```
+
+# Visualization
+
+```{r}
+ggplot(user210_orders)+
+  geom_point(aes(x=factor(order_dow),y=order_hour_of_day))
+ggplot(user210_orders)+
+  geom_point(aes(y=factor(order_dow),x=days_since_prior_order))
+```
+
+
+
