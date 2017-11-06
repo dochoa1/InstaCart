@@ -1,15 +1,8 @@
 # macOS Files
 .DS_Store
 
-# InstaCart Data
-aisles.csv
-departments.csv
-order_products__prior.csv
-order_products__train.csv
-orders.csv
-products.csv
-orders_sample40.csv
-order_products_sample40.csv
+# CSV files (typically Data)
+*.csv
 
 # History files
 .Rhistory
