@@ -28,6 +28,8 @@ orders <- read_csv("../Source/orders_sample40.csv")
 products <- read_csv("../Source/order_products_sample40.csv")
 ```
 
+Calculate the numer of orders per user. 
+
 ```{r}
 num_of_orders <- orders%>%
 group_by(user_id)%>%
@@ -41,10 +43,11 @@ left_join(num_of_orders)
 orders
 ```
 
+First, I tried a linear regression to predict number of items based on order date and hours.
 ```{r}
 lm(num_of_orders ~ order_dow + order_hour_of_day+days_since_prior_order, orders)
 ```
-
+Then I plotted the number of orders versus days since prior order. The longer time people wait, the less likely they are going to reorder. Weedends are less elastic than weekdays.
 ```{r}
 ggplot(orders,aes(y=num_of_orders,x=days_since_prior_order,color=order_dow)) +
 geom_smooth(method='lm')
