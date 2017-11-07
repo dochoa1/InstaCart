@@ -21,17 +21,17 @@ output:
 ```{r echo=FALSE, message=FALSE}
 library(tidyverse)
 library(tree)
+library(randomForest)
 ```
 
 This file is used to predict how many items a user will order on their next order
 
 # Reading In The Data
 ```{r message=FALSE, warning=FALSE }
-orders <- read_csv("../Source/prior_orders_sample40k.csv") %>%
+orders <- read_csv("../Source/orders_sample40.csv") %>%
   mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
-                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday"))) %>%
-  filter(!is.na(days_since_prior_order))
-order_products <- read_csv("../Source/prior_order_products_sample40k.csv")
+                            `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
+order_products <- read_csv("../Source/order_products_sample40.csv")
 ```
 
 # Preparing the Data
@@ -53,7 +53,7 @@ orders <-
   mutate(avg_num_products = mean(num_products))
 ```
 
-Previous Order num_products variable
+Below we create a previous_num_products variable for the number of products in this users previous order.
 ```{r}
 orders <-
   orders %>%
@@ -64,28 +64,32 @@ orders <-
 
 Once we have sampled our training and test datasets we can move on to making predictions.
 ```{r echo=FALSE}
-set.seed(7)  # Allows for reproducable sample results
-random_users <- sample(unique(orders$user_id), 4000)  #4000 users are randomly chosen (~10% sample)
-
-ordersTest <-
-  subset(orders, user_id %in% random_users)
-ordersTrain <- setdiff(orders, ordersTest)
-
-ordersTest <-
-  ordersTest %>%
-  select(user_id, order_id, order_number, num_products, previous_num_products, avg_num_products, order_dow, order_hour_of_day, days_since_prior_order)
 ordersTrain <-
-  ordersTrain %>%
-  select(user_id, order_id, order_number, num_products, previous_num_products, avg_num_products, order_dow, order_hour_of_day, days_since_prior_order)
+  orders %>%
+  filter(eval_set == "train") %>%
+  select(user_id, order_id, order_number, num_products, eval_set, previous_num_products, avg_num_products, order_dow, order_hour_of_day, days_since_prior_order)
+ordersPrior <- 
+  orders %>%
+  filter(eval_set == "prior") %>%
+  select(user_id, order_id, order_number, num_products, eval_set, previous_num_products, avg_num_products, order_dow, order_hour_of_day, days_since_prior_order)
 ```
 
 # Making Predictions
 
+## Predictions using a Regression Tree
 ```{r echo=FALSE}
-singleTree <- tree(num_products ~ days_since_prior_order+avg_num_products+previous_num_products, ordersTrain)
-plot(singleTree)
-text(singleTree, pretty=1)
+regTree <- tree(num_products ~ days_since_prior_order+avg_num_products+previous_num_products, ordersPrior)
+summary(regTree)
+plot(regTree)
+text(regTree, pretty=1)
 ```
 
+## Predictions using a Random Forest
+
+I have to lower ntrees (taking too long, look up other optimaizations)
+```{r}
+Rforest <- randomForest(num_products ~ days_since_prior_order+avg_num_products+previous_num_products, ordersTrain, na.action=na.roughfix)
+summary(Rforest)
+```
 
 
