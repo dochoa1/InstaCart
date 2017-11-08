@@ -8,7 +8,9 @@ orders <- read_csv("../Source/orders.csv") %>%
   mutate(order_dow = as.character(recode(order_dow, `0`="Sunday", `1`="Monday", `2`="Tuesday",
                                          `3`="Wednesday", `4`="Thurday", `5`="Friday", `6`="Saturday")))
 
-order_products <- read_csv("../Source/order_products__prior.csv")
+order_products_prior <- read_csv("../Source/order_products__prior.csv")
+order_products_train <- read_csv("../Source/order_products__train.csv")
+order_products <- rbind(order_products_prior, order_products_train)
 
 # Randomly sampling the data
 set.seed(42)  # Allows for reproducable sample results
