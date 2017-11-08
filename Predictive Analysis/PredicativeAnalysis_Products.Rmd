@@ -28,6 +28,8 @@ library(tidyverse)
 library(ggplot2)
 library(scales)
 library(reshape2)
+library(tree)
+library(randomForest)
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
@@ -53,11 +55,12 @@ Filtering out only priors data for train subset
 ```{r}
 # Filter out the orders would lead the final evaluation of 'train' (instead of test eval)
 train_users <- subset(orders40,eval_set=='train')
+orders40 <- orders40%>%
+  mutate(order_dow = factor(order_dow, levels=c("Sunday","Monday","Tuesday","Wednesday","Thurday","Friday","Saturday")))
 orders40_train <- orders40%>%
   filter(user_id %in% train_users$user_id)
 # Prios data for train set
 order_products_trprior40 <- subset(order_products_prior40, order_id %in% unique(orders40_train$order_id))
-
 ```
 
 Create the testing data from training set
@@ -74,7 +77,8 @@ rm(order_products_train,order_products_prior40,orders40)
 ```{r cache=TRUE}
 warehouse <- products%>%
   left_join(departments)%>%
-  left_join(aisles)
+  left_join(aisles)%>%
+  mutate(department=as.factor(department))
 
 inventory <- warehouse%>%
   group_by(department,aisle)%>%
@@ -103,22 +107,137 @@ knitr::kable(
 )
 ```
 
-We are going to look at the first one that showed up: the user with `user_id` of 210
+We are going to look at the first one that showed up: the user with `user_id` of 210.
 
 ```{r}
 user210_orders <- subset(orders40_train,user_id==210)
 user210_products_prior <- subset(order_products_trprior40,order_id %in% user210_orders$order_id)
 user210_products_train <- subset(order_products_train40,order_id %in% user210_orders$order_id)  
+user210_prior_details <- left_join(user210_products_prior,user210_orders) %>%
+  left_join(warehouse)%>%
+  select(-X1,-eval_set,-user_id,-aisle_id,-department_id)
+```
+
+The table below consists of information about department in each order the User210 made. 
+
+```{r}
+user210_prior_department <- user210_prior_details%>%
+  select(order_number,department,order_dow,order_hour_of_day,days_since_prior_order)%>%
+  group_by(order_number,department,order_dow,order_hour_of_day,days_since_prior_order)%>%
+  summarise(count=n())%>%
+  group_by(order_number)%>%
+  mutate(total=sum(count),percentage=count/total)
+```
+
+```{r, echo=FALSE}
+knitr::kable(
+  user210_prior_department[1:9,], caption = 'User 210 Product Department Summary'
+)
+```
+
+Since it is likely that a user behavior will be somewhat consistent (habits), we expect the percentage of each department ordered could be predicted based on Day of Week, Hour of Day, and Total amount of Order.
+
+Here is the visualization on the dataset. We could observe that the behaviour is indeed quite consistent and predictable
+
+```{r}
+ggplot(user210_prior_department,aes(x=order_dow,y=percentage,color=department))+
+  geom_jitter(alpha=0.5)
+ggplot(user210_prior_department,aes(x=order_hour_of_day,y=percentage,color=department))+
+  geom_jitter(alpha=0.5)
+ggplot(user210_prior_department,aes(x=total,y=percentage,color=department))+
+  geom_point(alpha=0.5)
+```
+
+# Department Predictive Analysis -- Data Prep
+
+First of all, we are going to divide the prior data set into two parts. The first 70 days will be used to train the dataset, and the rest 29 days will be used to test the performance of our prediction.
+
+```{r}
+user210_prior_department70 <- user210_prior_department%>%
+  subset(order_number<71)%>%
+  ungroup
+user210_prior_department29 <- user210_prior_department%>%
+  subset(70<order_number&order_number<100)%>%
+  ungroup
+```
+
+# Department Predictive Analysis -- Regression
+
+```{r}
+lm1=lm(percentage~order_dow+total+department,user210_prior_department70)
+summary(lm1)
+```
+
+# Department Predictive Analysis -- Decision Tree
+
+1. Tree of: `percentage~department`
+
+```{r}
+set.seed(3)
+tree1<-tree(percentage~department,
+            data=user210_prior_department70)
+summary(tree1)
+plot(tree1)
+text(tree1,pretty=1)
+```
+
+2. Tree of: `percentage~department+total+order_dow`
+
+```{r}
+set.seed(30)
+tree2<-tree(percentage~department+total+order_dow,
+            data=user210_prior_department70)
+summary(tree2)
+plot(tree2)
+text(tree2,pretty=1)
+```
+
+# Department Predictive Analysis -- Random Forest
+
+```{r}
+set.seed(300)
+forest1 <- randomForest(percentage~department,user210_prior_department70)
+```
+
+```{r}
+set.seed(300)
+forest2 <- randomForest(percentage~department+order_dow+total,user210_prior_department70)
 ```
 
 # Visualization
 
 ```{r}
-ggplot(user210_orders)+
-  geom_point(aes(x=factor(order_dow),y=order_hour_of_day))
-ggplot(user210_orders)+
-  geom_point(aes(y=factor(order_dow),x=days_since_prior_order))
+forest.pred <- predict(forest2, user210_prior_department70)    
+user210_prior_department70 <- user210_prior_department70 %>% 
+    mutate(forest.prediction=forest.pred)    
+ggplot(user210_prior_department70, aes(y=forest.prediction, x=order_dow, color=department)) +
+    geom_line()+
+    geom_jitter(aes(y=percentage, x=order_dow, color=department), alpha=0.5)+
+    labs(title="An Example of Order-Department Prediction -- Random Forests")
 ```
 
+# Testing and Results
+
+```{r}
+lmtest <- predict(lm1, user210_prior_department29)
+tree1test <- predict(tree1, user210_prior_department29)
+tree2test <- predict(tree2, user210_prior_department29) 
+forest1test <- predict(forest1, user210_prior_department29) 
+forest2test <- predict(forest2, user210_prior_department29)    
+
+
+TestResults <- user210_prior_department29 %>% 
+    mutate(lmtest, tree1test)%>%
+    mutate(lmError=(percentage-lmtest), tree1Error=(percentage-tree1test),
+           tree2Error=(percentage-tree2test),forest1Error=(percentage-forest1test), forest2Error=(percentage-forest2test))
+mean(TestResults$lmError^2) 
+mean(TestResults$tree1Error^2) 
+mean(TestResults$tree2Error^2)
+mean(TestResults$forest1Error^2)
+mean(TestResults$forest2Error^2)
+
+```
+
+We could see that all supervised learning model outperformed the linear regression. Surprisingly, the best result we got was from the simple `tree` with only one dependent variable `department`. Adding time component to the model worsen the prediction. 
 
 
