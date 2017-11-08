@@ -21,6 +21,7 @@ output:
 ```{r}
 library(tidyverse)
 library(randomForest)
+library(tree)
 ```
 
 ```{r}
@@ -53,18 +54,101 @@ ggplot(orders,aes(y=num_of_orders,x=days_since_prior_order,color=order_dow)) +
 geom_smooth(method='lm')
 ```
 
+join the two tables together and filter out training data
 ```{r}
-randomForest(num_of_orders ~ order_dow + order_hour_of_day+days_since_prior_order, orders)
+orders$eval_set <- as.factor(orders$eval_set)
+order_products_train <-
+  products %>%
+  inner_join(orders, by="order_id") 
 ```
 
 ```{r}
-orders %>%
-left_join(products,by="order_id")
+order_products_train
+```
+
+```{r}
+numitems <- order_products_train %>%
+  group_by(user_id) %>%
+  summarise(numitems = n())
+numitems
 ```
 
 
+```{r}
+order_products_train <- order_products_train%>%
+  left_join(numitems,by="user_id")
+```
 
+```{r}
+order_products_train
+```
 
+```{r}
+set.seed(101) 
+library(caTools)
+sample = sample.split(order_products_train$numitems, SplitRatio = .6)
+train = subset(order_products_train, sample == TRUE)
+test  = subset(order_products_train, sample == FALSE)
+```
 
+First try linear model
+```{r}
+lm1 <- lm(numitems ~ order_dow + order_hour_of_day+days_since_prior_order, train)
+summary(lm1)
+```
+```{r}
+lmtest <- predict(lm1,test)
+```
 
+```{r}
+lmAccuracy <- test %>% 
+    mutate(lmtest)%>%
+    mutate(lmError=(numitems-lmtest))
+lmAccuracy[is.na(lmAccuracy)] <- 0
+mean(lmAccuracy$lmError^2)
+```
+This is the sum of squared error for the linear model. 
+
+Next, I tried regression tree.
+```{r}
+train[is.na(train)] <- 0
+test[is.na(test)] <- 0
+tree <- tree(numitems ~ order_dow + order_hour_of_day+days_since_prior_order, train)
+summary(tree)
+```
+
+```{r}
+treetest <- predict(tree,test)
+```
+
+```{r}
+treeAccuracy <- test %>% 
+    mutate(treetest)%>%
+    mutate(treeError=(numitems-treetest))
+treeAccuracy[is.na(treeAccuracy)] <- 0
+mean(treeAccuracy$treeError^2)
+```
+This is the sum of squared error for the regression tree.
+
+Finally, I tried random forest.
+```{r}
+#rf <- randomForest(numitems ~ order_dow + order_hour_of_day+days_since_prior_order, train)
+#summary(rf)
+```
+
+```{r}
+#rftest <- predict(rf,test)
+```
+
+```{r}
+#rfAccuracy <- test %>% 
+    #mutate(rftest)%>%
+    #mutate(rfError=(numitems-rftest))
+#rfAccuracy[is.na(rfAccuracy)] <- 0
+#mean(rfAccuracy$rfError^2)
+```
+
+This is the sum of squared error for random forest.
+
+Surprisingly, linear regression out perfomed tree at this case. This is probably because the relationship is more linear.
 
