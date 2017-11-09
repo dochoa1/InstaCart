@@ -1,0 +1,184 @@
+---
+title: "InstaCart Predictive Analysis: Reorder_n"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "November 8, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(readr)
+library(tree)
+library(randomForest)
+library(gbm)
+library(dplyr)
+library(ggplot2)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, message=FALSE, warning = FALSE,
+                      cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+# Loading my Workspace
+
+```{r}
+# load("my_work_space.RData")
+```
+
+# Loading the Data
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+load("../Source/orders_sample40.Rda")
+load("../Source/order_products_sample40.Rda")
+products <- read_csv("../Source/products.csv")
+departments <- read_csv("../Source/departments.csv")
+aisles <- read_csv("../Source/aisles.csv")
+orders <- orders_sample40
+order_products <- order_products_sample40
+rm(orders_sample40, order_products_sample40)  # remove unnecessary data tables
+```
+
+```{r}
+names(orders)
+names(order_products)
+names(products)
+names(departments)
+names(aisles)
+```
+
+# Preparing the Data 
+
+Some variables are taken from Danny's `PredictiveAnalysis_Products` file
+
+## User with the highest order
+
+### Prior
+```{r}
+top_order_userid_prior <-
+  order_products %>%
+  group_by(order_id) %>%
+  summarise(num_products = n(),
+            reorder_products = sum(reordered)) %>%
+  left_join(orders, by="order_id") %>%
+  filter(!is.na(days_since_prior_order),
+         eval_set=="prior") %>%
+  group_by(user_id) %>%
+  summarize(num_products = sum(num_products),
+            reorder_products = sum(reorder_products),
+            ave_days_since = mean(days_since_prior_order),
+            reord_ord_ratio = reorder_products/num_products) %>%
+  arrange(desc(num_products))
+head(top_order_userid_prior)
+```
+
+### Train
+```{r}
+top_order_userid_train <-
+  order_products %>%
+  group_by(order_id) %>%
+  summarise(num_products = n(),
+            reorder_products = sum(reordered)) %>%
+  left_join(orders, by="order_id") %>%
+  filter(!is.na(days_since_prior_order),
+         eval_set=="train") %>%
+  group_by(user_id) %>%
+  summarize(num_products = sum(num_products),
+            reorder_products = sum(reorder_products),
+            ave_days_since = mean(days_since_prior_order),
+            reord_ord_ratio = reorder_products/num_products) %>%
+  arrange(desc(num_products))
+head(top_order_userid_train)
+```
+
+```{r}
+names(top_order_userid_train)
+```
+
+
+# Predictions
+## Q: Predict number of reorders per each user
+
+## Regression Tree
+
+I chose regression tree because tree is an easy and simple regression and classification method to use.
+
+The tree below tells us that both `num_products` and `reord_order_ratio` are good candidates for predicting `reorder_products`. This makes sense since `num_products` is the denominator of `reord_order_ratio`. One indicator is that `ave_days_since` is not so predictive of `reorder_products` possibly because of missing variables.
+
+I would like to do a filtered-by-a- `user_id` analysis after this file for further predictive analysis.
+
+```{r echo=FALSE}
+set.seed(135)
+reg_tree <- tree(reorder_products ~ num_products + ave_days_since + reord_ord_ratio, 
+                 data = top_order_userid_train)
+summary(reg_tree)
+plot(reg_tree)
+text(reg_tree, pretty=1)
+```
+
+### Visualization: Orders and Reorders by Average Days Since Last Order 
+
+```{r}
+top_order_userid_train %>%
+  na.omit() %>%
+  ggplot(aes(x=num_products, y=reorder_products, color=ave_days_since, alpha=0.15)) + 
+  geom_point() + 
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(x="Number of Ordered Products", y="Number of Reordered Products",
+       title="Orders and Reorders by User ID",  
+       color="Average Days Since Last Order",
+       alpha="Transparency",
+       caption="Data from InstaCart Kaggle Competition")
+```
+It seems that the lower the `reord_ord_ratio`, the longer it takes for you to make an order again. However, this is not captured in the basic tree analysis.
+
+
+
+
+## Gradient Boosted Tree
+
+I chose gradient boosted tree because I have personally never used this method before, and wanted to explore the difference in outputs between other regression methods and GBT. Again, it seems that the variables in the data except for those that are directly related (`reord_ord_ratio` and `num_products`) do not really contribute to predicting `reorder_products`. As with the first analysis, `ave_days_since` does not explain the variability in `reorder_products` well.
+
+```{r}
+set.seed(345)
+grad_boost = gbm(reorder_products ~ num_products + ave_days_since + reord_ord_ratio + user_id, 
+                 data = top_order_userid_train,
+              distribution = "gaussian", n.trees = 100,
+              interaction.depth = 4)
+summary(grad_boost) # Analyze variable importance
+```
+
+```{r}
+plot(grad_boost, i = c("reord_ord_ratio","num_products")) 
+```
+
+Again, I need to create more variables for better analysis. These files are in progress as of now. 
+
+```{r}
+tree_test <- predict(reg_tree, top_order_userid_prior)
+grad_boost_test <- predict(grad_boost, top_order_userid_prior, n.trees=100)    
+
+train_results <- top_order_userid_prior %>% 
+    mutate(tree_test, grad_boost_test)%>%
+    mutate(tree_error=(reorder_products-tree_test), 
+           gb_error=(reorder_products-grad_boost_test))
+mean(train_results$tree_error^2) 
+mean(train_results$gb_error^2) 
+```
+
+Tree has a lower mean squared.
+
+```{r}
+# save.image(file = "my_work_space.RData")
+```
