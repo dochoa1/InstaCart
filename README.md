@@ -11,3 +11,9 @@ Be sure to download all of the files except for `sample_submission.csv.zip`, thi
 Once downloaded make sure that all of the .csv files are exported to a subdirectory called `Source`.
 
 If you find that your machine of choice lacks to computing power to work with the datasets as they are than we recommend you run `/DataPrep/CreateSampleDatasets.R` which will produce 20% randomly sampled `orders` and `order_products` datasets according to `user_id` in a reproducible manner.
+
+# Citation
+
+The data used in this project was made publicly available courtesy of InstaCart.
+
+“The Instacart Online Grocery Shopping Dataset 2017”, Accessed from https://www.instacart.com/datasets/grocery-shopping-2017 on <11/08/2017>

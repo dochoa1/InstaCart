@@ -181,6 +181,7 @@ crossVal <- train %>%
   filter(!order_id %in% sampleTrain$order_id)
 ```
 
+
 # Predictions
 
 ```{r}
@@ -204,23 +205,28 @@ crossVal$reordered <- predict(model, crossValMatrix)
 crossVal$reordered <- (crossVal$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it
 ```
 
-Let picture the overlap in predictions and actual orders
+Let picture the accuracy of predictions
 ```{r}
-crossVal_viz <- crossVal %>%
-  filter(order_id == 1232929) %>%
+crossVal_ex <- crossVal %>%
+  filter(order_id == 1725556) %>%
   mutate(predictedToOrder = reordered) %>%
   select(product_id, predictedToOrder)
 
-order_products_viz <- order_products %>%
-  filter(order_id == 1232929) %>%
-  mutate(actuallyOrder = reordered) %>%
-  select(product_id, actuallyOrder) %>%
-  full_join(crossVal_viz, by="product_id")
+order_products_ex <- order_products %>%
+  filter(order_id == 1725556) %>%
+  mutate(actuallyOrder = 1) %>%
+  select(product_id, actuallyOrder)
 
-order_products_viz <- replace(order_products_viz,is.na(order_products_viz),0)
+prediction_table <- order_products_ex %>%
+  full_join(crossVal_ex, by="product_id")
+  
+prediction_table <- replace(prediction_table,is.na(prediction_table),0)
+prediction_table <- prediction_table %>%
+  mutate(accuracy = actuallyOrder - predictedToOrder) %>%
+  select(product_id, accuracy)
 
-ggplot() + geom_point(data=order_products_viz, aes(x=product_id, y=actuallyOrder), color="red", alpha=0.2) + geom_point(data=order_products_viz, aes(x=product_id, y=predictedToOrder), color="blue", alpha=0.2)
+ggplot(data=prediction_table, aes(x=product_id, y=accuracy)) + geom_point(aes(color=accuracy))
 ```
 
 
-We can see from this graphic that we were able to correctly predict some of the products that the order would contain (the dots in purple!) There is still a lot of room for improvement!
+We can see from this graphic that the model was able to correctly predict some of the products that the order would contain. However, the model also predicts some products that the user did not order, in addition the model fails to predict a number of products that the user did in fact order.
