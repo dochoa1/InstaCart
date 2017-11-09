@@ -1,0 +1,226 @@
+---
+title: "InstaCart Predictive Analysis: Predicting Orders"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r echo=FALSE, message=FALSE}
+library(tidyverse)
+library(xgboost)
+library(Ckmeans.1d.dp) # Used for XGBoost visuzalization
+```
+
+This file is used to predict what products a user will order next
+
+# Reading In The Data
+```{r message=FALSE, warning=FALSE }
+orders <- read_csv("../Source/orders_sample40.csv")
+order_products <- read_csv("../Source/order_products_sample40.csv")
+products <- read_csv("../Source/products.csv")
+```
+
+# Preparing the Data
+
+Cleaning the data by changing variable types (maybe add more to this and move to seperate file in /DataPrep)
+```{r}
+orders$eval_set <- as.factor(orders$eval_set)
+products$product_name <- as.factor(products$product_name)
+```
+
+We want to build our model only on the `prior` dataset.
+```{r}
+orders_prior <- 
+  orders %>%
+  filter(eval_set == "prior")
+
+order_products_prior <-
+  order_products %>%
+  inner_join(orders_prior, by="order_id")
+```
+
+We are going to want the results of the `train` dataset for cross-validation later.
+```{r}
+orders_train <- 
+  orders %>%
+  filter(eval_set == "train")
+
+order_products_train <-
+  order_products %>%
+  inner_join(orders_train, by="order_id")
+```
+
+# Feature Engineering
+
+We are going to want data specific to each user, each product, and each user-product interaction. The features that come in the vanilla datasets aren't quite telling enought so we are going to build some of our own.
+
+(Maybe move feature engineering to seperate script in /DataPrep)
+
+
+## Feature Engineering: Products
+
+Adding product specific features
+```{r}
+prods <- order_products_prior %>%
+  arrange(user_id, order_number, product_id) %>%
+  group_by(user_id, product_id) %>%
+  mutate(product.numTimes = row_number()) %>% #  Number of times this product has appeared so far for this user
+  ungroup() %>%
+  group_by(product_id) %>%
+  summarise(product.orders = n(),
+            product.reorders = sum(reordered),
+            product.firstOrders = sum(product.numTimes == 1), # number of users that have ordered this product
+            product.secondOrders = sum(product.numTimes == 2)) %>% # number of users that ordered this product more than once
+  mutate(product.reorderProbability = product.secondOrders / product.firstOrders) %>%
+  mutate(product.avgTimesOrdered = 1 + product.reorders / product.firstOrders) %>%
+  mutate(product.reorderRatio = product.reorders / product.orders) %>%
+  select(-product.reorders, -product.firstOrders, -product.secondOrders)
+```
+
+
+## Feature Engineering: Users
+
+Adding user specific features
+```{r}
+users <- orders_prior %>%
+  group_by(user_id) %>%
+  summarise(user.numOrders = max(order_number),
+            user.useInterval = sum(days_since_prior_order, na.rm=TRUE),
+            user.avgDaysSincePriorOrder = mean(days_since_prior_order, na.rm=TRUE))
+```
+
+Some user specific features require data on the number of products they order
+```{r}
+user_products <- order_products_prior %>%
+  group_by(user_id) %>%
+  summarise(user.totalProducts = n(),
+            user.reorderRatio = sum(reordered == 1) / sum(order_number > 1))
+
+users <- users %>%
+  inner_join(user_products, by="user_id") %>%
+  mutate(user.avgOrderSize = user.totalProducts / user.numOrders)
+
+rm(user_products)
+```
+
+Finally let's add the `test` and `train` orders for each user to the users table to be used later for predictions (days_since_prior_order) and in seperating of cross-validation and test prediction sets.
+```{r}
+users_finalOrder <- orders %>%
+  filter(eval_set != "prior") %>%
+  select(user_id, order_id, days_since_prior_order, eval_set)
+
+users <- users %>% 
+  inner_join(users_finalOrder, by="user_id")
+```
+
+## Feature Engineering: User-Product
+
+```{r}
+user_products <- order_products_prior %>%
+  group_by(user_id, product_id) %>% 
+  summarise(
+    user_product.orders = n(),
+    user_product.firstOrder = min(order_number),
+    user_product.lastOrder = max(order_number),
+    user_product.avgCartPosition = mean(add_to_cart_order))
+```
+
+
+# Data: Build Main Data Set
+
+```{r}
+data <- user_products %>% 
+  inner_join(prods, by = "product_id") %>%
+  inner_join(users, by = "user_id")
+```
+
+We join with train dataset reorders to train model in which products are reordered. (I think this means that we are currently only considering possible products that a user can order from the products they have already ordered.)
+```{r}
+data <- data %>% 
+  left_join(order_products_train %>% select(user_id, product_id, reordered), 
+            by = c("user_id", "product_id"))
+```
+
+# Data: Test and Train
+
+```{r}
+train <- data %>%
+  ungroup() %>%
+  filter(eval_set == "train") %>%
+  select(-eval_set, -user_id)
+
+train$reordered[is.na(train$reordered)] <- 0
+```
+
+```{r}
+test <- data %>%
+  ungroup() %>%
+  filter(eval_set == "test") %>%
+  select(-eval_set, -user_id, -reordered)
+```
+
+```{r}
+set.seed(567)
+sampleTrain <- train %>% 
+   sample_frac(0.1)
+
+crossVal <- train %>%
+  filter(!order_id %in% sampleTrain$order_id)
+```
+
+# Predictions
+
+```{r}
+trainingMatrix <- xgb.DMatrix(as.matrix(sampleTrain %>% select(-reordered)), label = sampleTrain$reordered)
+model <- xgboost(data = trainingMatrix, objective="binary:logistic",nrounds = 80, verbose=0)
+importance <- xgb.importance(colnames(trainingMatrix), model = model)
+xgb.ggplot.importance(importance)
+```
+
+We can see from this which features are the most important. It is no suprie that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
+
+```{r}
+testMatrix <- xgb.DMatrix(as.matrix(test))
+test$reordered <- predict(model, testMatrix)
+test$reordered <- (test$reordered > 0.95) * 1 # 0.95 is random threshold I came up with, experiment with it
+```
+
+```{r}
+crossValMatrix <- xgb.DMatrix(as.matrix(crossVal))
+crossVal$reordered <- predict(model, crossValMatrix)
+crossVal$reordered <- (crossVal$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it
+```
+
+Let picture the overlap in predictions and actual orders
+```{r}
+crossVal_viz <- crossVal %>%
+  filter(order_id == 1232929) %>%
+  mutate(predictedToOrder = reordered) %>%
+  select(product_id, predictedToOrder)
+
+order_products_viz <- order_products %>%
+  filter(order_id == 1232929) %>%
+  mutate(actuallyOrder = reordered) %>%
+  select(product_id, actuallyOrder) %>%
+  full_join(crossVal_viz, by="product_id")
+
+order_products_viz <- replace(order_products_viz,is.na(order_products_viz),0)
+
+ggplot() + geom_point(data=order_products_viz, aes(x=product_id, y=actuallyOrder), color="red", alpha=0.2) + geom_point(data=order_products_viz, aes(x=product_id, y=predictedToOrder), color="blue", alpha=0.2)
+```
+
+
+We can see from this graphic that we were able to correctly predict some of the products that the order would contain (the dots in purple!) There is still a lot of room for improvement!
