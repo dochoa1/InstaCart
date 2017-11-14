@@ -1,0 +1,171 @@
+---
+title: "InstaCart Predictive Analysis: Clustering Products"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ape)                #to make hierarchical clusters
+library(mclust)             #for k-means clustering
+library(BBmisc)             #for data normalization
+```
+
+# Reading In The Data
+```{r message=FALSE, warning=FALSE }
+orders <- read_csv("../Source/orders_sample40.csv") %>%
+  mutate(order_hour_of_day = as.numeric(recode(order_hour_of_day, "00"=0, "01"=1, "02"=2, "03"=3, "04"=4, "05"=5, "06"=6, "07"=7, "08"=8, "09"=9, "10"=10, "11"=11, "12"=12, "13"=13, "14"=14, "15"=15, "16"=16, "17"=17, "18"=18, "19"=19, "20"=20, "21"=21, "22"=22, "23"=23)))
+order_products <- read_csv("../Source/order_products_sample40.csv")
+products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
+```
+
+# Preparing the Data
+
+```{r}
+orders$eval_set <- as.factor(orders$eval_set)
+orders$order_dow <- as.factor(orders$order_dow)
+products$product_name <- as.factor(products$product_name)
+products$aisle_id <- as.factor(products$aisle_id)
+```
+
+We want to establish our clustering only on the `prior` dataset.
+```{r}
+orders <- orders %>% filter(eval_set == "prior")
+
+order_products <-
+  order_products %>%
+  inner_join(orders, by="order_id")
+```
+
+
+## Feature Engineering: Products
+
+Adding product specific features
+
+```{r}
+prods <- order_products %>%
+  arrange(user_id, order_number, product_id) %>%
+  group_by(user_id, product_id) %>%
+  mutate(product.numTimes = row_number()) %>% #  Number of times this product has appeared so far for this user
+  ungroup() %>%
+  group_by(product_id) %>%
+  summarise(product.orders = n(),
+            product.reorders = sum(reordered),
+            product.avg_hour_of_day = mean(order_hour_of_day),
+            product.firstOrders = sum(product.numTimes == 1), # number of users that have ordered this product
+            product.secondOrders = sum(product.numTimes == 2)) %>% # number of users that ordered this product more than once
+  mutate(product.reorderProbability = product.secondOrders / product.firstOrders) %>%
+  mutate(product.avgTimesOrdered = 1 + product.reorders / product.firstOrders) %>%
+  mutate(product.reorderRatio = product.reorders / product.orders) %>%
+  select(-product.reorders, -product.firstOrders, -product.secondOrders)
+```
+
+
+Lets join the prods and products tables together and for simplicity's sake only consider the aisle with teas. We filter out to consider only the teas that are ordered more than a few times
+```{r}
+teas <- prods %>%
+  inner_join(products, by="product_id") %>%
+  filter(aisle_id == 94, product.orders > 20) %>%
+  select(-product_id, -aisle_id, -department_id)
+```
+
+We are going to need a research question for our clustering in future sections... how about: Can we cluster similar types of teas together?
+
+Many of the teas have what kind they are built into their names, using regex's we can classify each teas quite easily. We will consider some popular types of teas: organic, green, unsweetened, diet, and iced.
+
+All of the words in each of these products are capitalized so it makes the regex's on the type of tea easy.
+```{r}
+organic_patt = "Organic"
+green_patt = "Green"
+unsweetened_patt = "Unsweetened"
+diet_patt = "Diet"
+iced_patt = "Iced"
+
+teas <- teas %>%
+  mutate(organic = grepl(organic_patt, product_name),
+         green = grepl(green_patt, product_name),
+         unsweetened = grepl(unsweetened_patt, product_name),
+         diet = grepl(diet_patt, product_name),
+         iced = grepl(iced_patt, product_name))
+```
+
+
+# Clustering
+
+**Clustering Types of Tea Using K-means**
+
+I decided to use K-means clustering for this example because the heirarchical clustering had too many leaf nodes so the graph was very dense. Further, I was not interested in seeing which teas were most alike on an individual basis but more on a group by group basis.
+
+```{r}
+# The variables we are going to use to cluster teas
+tea_vars <- teas %>%
+  select(product.avg_hour_of_day, product.orders, product.reorderProbability, product.avgTimesOrdered, product.reorderRatio)
+
+# normalize values before K-means clustering
+tea_norm<-normalize(tea_vars)
+```
+
+```{r}
+set.seed(1)
+num_clusters <- 5
+tea_clusts <- tea_norm %>%
+  kmeans(centers=num_clusters) %>%
+  fitted("classes") %>%  # Need to understand fitted() a little better, used because David uses it.
+  as.character()
+
+teas <- teas %>%
+  mutate(cluster=tea_clusts)
+```
+
+Let's see if how well clustered the `diet` teas are.
+
+```{r,echo=FALSE}
+ggplot(teas,aes(x=product.avg_hour_of_day,y=product.orders))+geom_point(aes(color=cluster, alpha=diet))
+```
+So the clustering isn't perfect we can see that most of the diet teas end up in the same cluster. From the errors we are getting it seems like the clustering algorithm may be giving too much weight towards clustering together teas that have a high volume of orders (since they are all in the same cluster).
+
+
+**Clutering Similar Types of Green Tea Using Hierarchical Clustering**
+
+Okay, how about we look at which types of green tea are the most similar to each other. This question might be better suited to heirarchical clustering since there wont be quite as many different teas.
+
+```{r}
+green_teas <- teas %>%
+  filter(green)
+
+green_teas <- as.data.frame(green_teas)
+rownames(green_teas) <- green_teas$product_name
+
+# The variables we are going to use to cluster green teas
+green_teas_vars <- green_teas %>%
+  select(product.avg_hour_of_day, product.orders, product.reorderProbability, product.avgTimesOrdered,  product.reorderRatio)
+
+# normalize values before clustering
+green_teas_norm <- normalize(green_teas_vars)
+```
+
+Time for clustering
+```{r}
+green_teas_diffs<-dist(green_teas_norm)
+green_teas_diffs%>%
+  hclust() %>%
+  as.phylo() %>%
+  plot(cex=0.6,label.offset=1)
+```
+
+From the heirarchical plot produced we can see that some reasonable clustering is being done. For instance, "Green With Honey Iced Tea" is clostest to "Austin's Own Goodflow Honey Green Tea", this makes sense they are both green teas with honey. If you look at the plot closely you'll find some pairings that don't make too much immediate sense but for the most part I think the hierarchical clustering did a fair job.
+

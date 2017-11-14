@@ -21,7 +21,8 @@ output:
 ```{r echo=FALSE, message=FALSE}
 library(tidyverse)
 library(xgboost)
-library(Ckmeans.1d.dp) # Used for XGBoost visuzalization
+library(Ckmeans.1d.dp) # Used for XGBoost visualization
+library(DiagrammeR) # Used for XGBoost visualization
 ```
 
 This file is used to predict what products a user will order next
@@ -30,7 +31,7 @@ This file is used to predict what products a user will order next
 ```{r message=FALSE, warning=FALSE }
 orders <- read_csv("../Source/orders_sample40.csv")
 order_products <- read_csv("../Source/order_products_sample40.csv")
-products <- read_csv("../Source/products.csv")
+products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
 ```
 
 # Preparing the Data
@@ -43,6 +44,7 @@ products$product_name <- as.factor(products$product_name)
 
 We want to build our model only on the `prior` dataset.
 ```{r}
+# take out one with final row as test
 orders_prior <- 
   orders %>%
   filter(eval_set == "prior")
@@ -61,6 +63,8 @@ orders_train <-
 order_products_train <-
   order_products %>%
   inner_join(orders_train, by="order_id")
+
+rm(order_products)
 ```
 
 # Feature Engineering
@@ -124,6 +128,8 @@ users_finalOrder <- orders %>%
 
 users <- users %>% 
   inner_join(users_finalOrder, by="user_id")
+
+rm(users_finalOrder, orders)
 ```
 
 ## Feature Engineering: User-Product
@@ -145,6 +151,8 @@ user_products <- order_products_prior %>%
 data <- user_products %>% 
   inner_join(prods, by = "product_id") %>%
   inner_join(users, by = "user_id")
+
+rm(prods, users, user_products)
 ```
 
 We join with train dataset reorders to train model in which products are reordered. (I think this means that we are currently only considering possible products that a user can order from the products they have already ordered.)
@@ -170,6 +178,8 @@ test <- data %>%
   ungroup() %>%
   filter(eval_set == "test") %>%
   select(-eval_set, -user_id, -reordered)
+
+rm(data)
 ```
 
 ```{r}
@@ -185,10 +195,18 @@ crossVal <- train %>%
 # Predictions
 
 ```{r}
-trainingMatrix <- xgb.DMatrix(as.matrix(sampleTrain %>% select(-reordered)), label = sampleTrain$reordered)
-model <- xgboost(data = trainingMatrix, objective="binary:logistic",nrounds = 80, verbose=0)
+independents <- sampleTrain %>% 
+  select(-reordered)
+
+trainingMatrix <- xgb.DMatrix(as.matrix(independents), label = sampleTrain$reordered)
+model <- xgboost(data = trainingMatrix, objective="binary:logistic", nrounds = 80, verbose=0)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
+```
+
+
+```{r}
+xgb.plot.tree(feature_names=colnames(independents), model=model, n_first_tree=1)
 ```
 
 We can see from this which features are the most important. It is no suprie that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
@@ -196,7 +214,7 @@ We can see from this which features are the most important. It is no suprie that
 ```{r}
 testMatrix <- xgb.DMatrix(as.matrix(test))
 test$reordered <- predict(model, testMatrix)
-test$reordered <- (test$reordered > 0.95) * 1 # 0.95 is random threshold I came up with, experiment with it
+test$reordered <- (test$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it (seems to move around)
 ```
 
 ```{r}
@@ -205,14 +223,16 @@ crossVal$reordered <- predict(model, crossValMatrix)
 crossVal$reordered <- (crossVal$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it
 ```
 
-Let picture the accuracy of predictions
+## Prediction Accuracy
+
+Lets picture the accuracy of predictions
 ```{r}
 crossVal_ex <- crossVal %>%
   filter(order_id == 1725556) %>%
   mutate(predictedToOrder = reordered) %>%
   select(product_id, predictedToOrder)
 
-order_products_ex <- order_products %>%
+order_products_ex <- order_products_train %>%
   filter(order_id == 1725556) %>%
   mutate(actuallyOrder = 1) %>%
   select(product_id, actuallyOrder)
@@ -227,6 +247,5 @@ prediction_table <- prediction_table %>%
 
 ggplot(data=prediction_table, aes(x=product_id, y=accuracy)) + geom_point(aes(color=accuracy))
 ```
-
 
 We can see from this graphic that the model was able to correctly predict some of the products that the order would contain. However, the model also predicts some products that the user did not order, in addition the model fails to predict a number of products that the user did in fact order.
