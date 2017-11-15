@@ -27,6 +27,17 @@ library(tidyverse)
 library(ggplot2)
 library(scales)
 library(reshape2)
+library(ggmap)
+library(tint)
+library(tree)               #for classification trees
+library(caret)              #for confusion matrices
+library(e1071)              #to make caret run
+library(rpart)              #alternative package to make trees
+library(randomForest)       #to make random forests
+library(gbm)                #to make gradient boosted trees
+library(ape)                #to make hierarchical clusters
+library(mclust)             #for k-means clustering
+library(BBmisc)             #for data normalization
 knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
 options(htmltools.dir.version = FALSE)
 ```
@@ -179,9 +190,21 @@ ggplot(top_aisle_edgelist, aes(x = aisle1, y = aisle2, fill = value)) +
        y="",
        fill="Count")
 ```
-
+ 
 # Interpretation
 
 We could see from the heatmap that fresh fruits and fresh vegetables are the most ordered aisles from InstaCart. This makes lots of sense since people need these items fresh pretty frequently. We could also see that they often come together, and people don't usually just order these alone. Some other items that often go with the fresh items are `package vegetables fruits`, `yogurt`, `packaged cheese`, and `milk`.
 
 However, one weakness of this heatmap is that the value depends on the diagonal values. If one aisle gets ordered more, then it is quite likely that it would come with some other items. Thus, the next step would be to normalized all these items to see if the frequency change for these aisle. For example, if `fresh fruits` and `soft drinks` have the same total number of orders, which items are they likely to be paired with (or may be just themselves).
+
+
+# Unsupervised Learning
+
+```{r}
+aisle_pairing=data.frame(aisle_adjacency)
+aisle_pairing<-dist(aisle_pairing)
+aisle_pairing%>%
+  hclust()%>%
+  as.phylo()%>%
+  plot(cex=0.6,label.offset=2)
+```
