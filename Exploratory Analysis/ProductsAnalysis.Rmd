@@ -200,11 +200,44 @@ However, one weakness of this heatmap is that the value depends on the diagonal 
 
 # Unsupervised Learning
 
+We are going to conduct unsupervised learning on the adjacency matrix created above to see which aisles are more likely to be ordered together.
+
 ```{r}
+set.seed(15)
 aisle_pairing=data.frame(aisle_adjacency)
-aisle_pairing<-dist(aisle_pairing)
-aisle_pairing%>%
-  hclust()%>%
-  as.phylo()%>%
-  plot(cex=0.6,label.offset=2)
+aisle_pairing_diffs<-dist(aisle_pairing)
+aisle_pairing_hc<-hclust(aisle_pairing_diffs)
+
+# Plot
+clus7 = cutree(aisle_pairing_hc, 20)
+plot(as.phylo(aisle_pairing_hc),type="fan",tip.color = clus7,
+     label.offset = 1, cex = 0.7)
+```
+
+# Unsupervised Learning -- Normalized
+
+```{r}
+aisle_pairing_norm <- normalize(aisle_pairing)
+aisle_pairing_ndiffs <- dist(aisle_pairing_norm)
+aisle_pairing_nhc<-hclust(aisle_pairing_ndiffs)
+
+# Plot
+clus7 = cutree(aisle_pairing_nhc, 20)
+plot(as.phylo(aisle_pairing_nhc),type="fan",tip.color = clus7,
+     label.offset = 1, cex = 0.7)
+```
+
+# Unsupervised Learning -- Scaled
+
+```{r}
+aisle_pairing_diagscale <- aisle_adjacency*(1/diag(aisle_adjacency))
+aisle_pairing_diagscale <- data.frame(aisle_pairing_diagscale)
+aisle_pairing_diagdiffs <- dist(aisle_pairing_diagscale)
+aisle_pairing_diaghc<-hclust(aisle_pairing_diagdiffs)
+
+# Plot
+clus7 = cutree(aisle_pairing_diaghc, 20)
+plot(as.phylo(aisle_pairing_diaghc),type="fan",tip.color = clus7,
+     label.offset = 0.1, cex = 0.7)
+
 ```
