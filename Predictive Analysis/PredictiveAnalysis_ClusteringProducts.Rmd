@@ -159,12 +159,12 @@ green_teas_norm <- normalize(green_teas_vars)
 ```
 
 Time for clustering
-```{r}
+```{r, fig.height=12, fig.width=14, out.width='200%'}
 green_teas_diffs<-dist(green_teas_norm)
-green_teas_diffs%>%
-  hclust() %>%
-  as.phylo() %>%
-  plot(cex=0.6,label.offset=1)
+green_hc <- green_teas_diffs%>%
+  hclust()
+cut=cutree(green_hc,10)
+plot(as.phylo(green_hc),tip.color=cut,type="radial",cex=1,label.offset=0.1)
 ```
 
 **Clutering Similar Types of Green Tea Using Hierarchical Clustering -- Column Normalizing**
@@ -187,7 +187,7 @@ green_teas_norm <- normalize(green_teas_vars)
 ```
 
 Time for clustering
-```{r}
+```{r, fig.height=12, fig.width=14, out.width='200%'}
 green_colmax=apply(green_teas_vars,2,max)
 green_scale=t(t(green_teas_vars)*(1/green_colmax))
 green_teas_diffs<-dist(green_scale)
