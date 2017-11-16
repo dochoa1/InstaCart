@@ -167,5 +167,35 @@ green_teas_diffs%>%
   plot(cex=0.6,label.offset=1)
 ```
 
+**Clutering Similar Types of Green Tea Using Hierarchical Clustering -- Column Normalizing**
+
+Okay, how about we look at which types of green tea are the most similar to each other. This question might be better suited to heirarchical clustering since there wont be quite as many different teas.
+
+```{r}
+green_teas <- teas %>%
+  filter(green)
+
+green_teas <- as.data.frame(green_teas)
+rownames(green_teas) <- green_teas$product_name
+
+# The variables we are going to use to cluster green teas
+green_teas_vars <- green_teas %>%
+  select(product.avg_hour_of_day, product.orders, product.reorderProbability, product.avgTimesOrdered,  product.reorderRatio)
+
+# normalize values before clustering
+green_teas_norm <- normalize(green_teas_vars)
+```
+
+Time for clustering
+```{r}
+green_colmax=apply(green_teas_vars,2,max)
+green_scale=t(t(green_teas_vars)*(1/green_colmax))
+green_teas_diffs<-dist(green_scale)
+green_hc <- green_teas_diffs%>%
+  hclust()
+cut=cutree(green_hc,10)
+plot(as.phylo(green_hc),tip.color=cut,type="radial",cex=1,label.offset=0.1)
+```
+
 From the heirarchical plot produced we can see that some reasonable clustering is being done. For instance, "Green With Honey Iced Tea" is clostest to "Austin's Own Goodflow Honey Green Tea", this makes sense they are both green teas with honey. If you look at the plot closely you'll find some pairings that don't make too much immediate sense but for the most part I think the hierarchical clustering did a fair job.
 
