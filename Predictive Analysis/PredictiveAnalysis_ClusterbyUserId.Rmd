@@ -1,0 +1,528 @@
+---
+title: "InstaCart Predictive Analysis: Hierarchical Clustering and K-Means by `user_id`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "November 25, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(ape)                #to make hierarchical clusters
+library(mclust)             #for k-means clustering
+library(BBmisc)             #for data normalization
+library(dplyr)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+# Load the data
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+load("../Source/orders_sample40.Rda")
+load("../Source/order_products_sample40.Rda")
+products <- read_csv("../Source/products.csv")
+departments <- read_csv("../Source/departments.csv")
+aisles <- read_csv("../Source/aisles.csv")
+orders <- orders_sample40
+order_products <- order_products_sample40
+rm(orders_sample40, order_products_sample40)  # remove unnecessary data tables
+```
+
+```{r}
+names(orders)
+names(order_products)
+names(products)
+names(departments)
+names(aisles)
+```
+
+
+
+# Prepare the data: by `user_id` without `order_chron`
+
+## Filter users who ordered more than 10 products
+
+Note: The `user_id` column is replaced as a rowname(df) in all data tables
+
+```{r}
+uid_train_nochron <- orders %>%
+  left_join(order_products, by="order_id") %>%
+  left_join(products, by="product_id") %>%
+  filter(eval_set == "prior") %>%
+  mutate(user_id = as.factor(user_id)) %>%
+  group_by(user_id) %>%
+  summarize(num_products=n(), # total number of products bought; repetition not overwritten
+            reorder_products=sum(reordered),
+            reord_ord_ratio=reorder_products/num_products,
+            days_since=mean(days_since_prior_order, na.rm = TRUE),
+            min_days_since=min(days_since_prior_order, na.rm = TRUE),
+            max_days_since=max(days_since_prior_order, na.rm = TRUE),
+            sd_days_since=sd(days_since_prior_order, na.rm = TRUE),
+            ave_hr=mean(as.numeric(order_hour_of_day)),
+            sd_hr=sd(as.numeric(order_hour_of_day)),
+            ave_dow=mean(as.numeric(order_dow)),
+            sd_dow=sd(as.numeric(order_dow))) %>%
+  filter(num_products >= 10) 
+temp <- uid_train_nochron
+uid_train_nochron <- as.data.frame(uid_train_nochron)
+rownames(uid_train_nochron) <- uid_train_nochron$user_id
+uid_train_nochron[,1] <- NULL
+save(uid_train_nochron, file="../Source/uid_priorsamp_nochron.Rda")
+
+head(uid_train_nochron)
+glimpse(uid_train_nochron)         # 38,996
+anyNA(uid_train_nochron)           # FALSE
+```
+
+## Filter users who ordered more than 100 products
+
+```{r}
+uid_train_nochron_100 <- temp %>%
+  filter(num_products >= 100)
+uid_train_nochron_100 <- as.data.frame(uid_train_nochron_100)
+rownames(uid_train_nochron_100) <- uid_train_nochron_100$user_id
+uid_train_nochron_100[,1] <- NULL
+save(uid_train_nochron_100, file="../Source/uid_priorsamp_nochron_100.Rda")
+
+head(uid_train_nochron_100)
+glimpse(uid_train_nochron_100)     # 17,512
+anyNA(uid_train_nochron_100)       # FALSE
+```
+
+## Filter users who ordered more than 200 products
+
+```{r}
+uid_train_nochron_200 <- temp %>%
+  filter(num_products >= 200)
+uid_train_nochron_200 <- as.data.frame(uid_train_nochron_200)
+rownames(uid_train_nochron_200) <- uid_train_nochron_200$user_id
+uid_train_nochron_200[,1] <- NULL
+save(uid_train_nochron_200, file="../Source/uid_priorsamp_nochron_200.Rda")
+
+head(uid_train_nochron_200)
+glimpse(uid_train_nochron_200)     # 9,315
+anyNA(uid_train_nochron_200)       # FALSE
+```
+
+
+
+# Inspect the data table `uid_train_nochron_200`
+
+## Take a glimpse of `uid_train_nochron_200`
+
+```{r}
+glimpse(uid_train_nochron_200)
+```
+
+## Check if any variable has missing values
+
+```{r}
+sum(is.na(uid_train_nochron_200$num_products))
+sum(is.na(uid_train_nochron_200$reorder_products))
+sum(is.na(uid_train_nochron_200$days_since))
+```
+
+## Examine some key statistics of the variables
+
+### `num_products` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$num_products)
+max(uid_train_nochron_200$num_products)
+mean(uid_train_nochron_200$num_products)
+sd(uid_train_nochron_200$num_products)
+# hist(uid_train_nochron_200$num_products, main=paste("Histogram of", colnames(uid_train_nochron_200)[1]))
+```
+
+### `reorder_products` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$reorder_products)
+max(uid_train_nochron_200$reorder_products)
+mean(uid_train_nochron_200$reorder_products)
+sd(uid_train_nochron_200$reorder_products)
+# hist(uid_train_nochron_200$reorder_products, main=paste("Histogram of", colnames(uid_train_nochron_200)[2]))
+```
+
+### `reord_ord_ratio` across `user_id`
+
+```{r}
+mean(uid_train_nochron_200$reord_ord_ratio)
+sd(uid_train_nochron_200$reord_ord_ratio)
+```
+
+### `days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$days_since)
+max(uid_train_nochron_200$days_since)
+mean(uid_train_nochron_200$days_since)
+sd(uid_train_nochron_200$days_since)
+```
+
+### `min_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$min_days_since)
+max(uid_train_nochron_200$min_days_since)
+mean(uid_train_nochron_200$min_days_since)
+sd(uid_train_nochron_200$min_days_since)
+```
+
+### `max_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$max_days_since)
+max(uid_train_nochron_200$max_days_since)
+mean(uid_train_nochron_200$max_days_since)
+sd(uid_train_nochron_200$max_days_since)
+```
+
+### `sd_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$sd_days_since)
+max(uid_train_nochron_200$sd_days_since)
+mean(uid_train_nochron_200$sd_days_since)
+sd(uid_train_nochron_200$sd_days_since)
+```
+
+
+
+# Process the data for clustering
+
+## Sample, normalize, and compute similarity with the data set of users who ordered more than 200 products
+
+```{r}
+uid_train_nochron_200_samp <- uid_train_nochron_200[sample(1:nrow(uid_train_nochron_200), 1000, replace=FALSE),]
+order_norm_200_samp <- normalize(uid_train_nochron_200_samp)
+sapply(order_norm_200_samp, mean)
+sapply(order_norm_200_samp, var)
+set.seed(15)
+order_norm_200_samp_diffs <- dist(order_norm_200_samp)
+anyNA(order_norm_200_samp_diffs)
+```
+
+## Keep the unsampled data set of users who ordered more than 200 products
+
+```{r}
+order_norm_200 <- normalize(uid_train_nochron_200)
+sapply(order_norm_200, mean)
+sapply(order_norm_200, var)
+set.seed(10)
+order_norm_200_diffs <- dist(order_norm_200)
+anyNA(order_norm_200_diffs)
+```
+
+## Plot a Dendrogram of 1000 random users who ordered more than 200 products
+
+```{r,fig.width=7,fig.height=100}
+order_norm_200_samp_diffs %>%
+  hclust("ave") %>%
+  as.phylo() %>%
+  plot(cex=0.7, label.offset=0, main="Dendrogram of 1000 Random Users with No Chronology", sub="who ordered more than 200 products")
+```
+
+## Plot a Dendrogram of all users who ordered more than 200 products
+
+### Create a closeup data set for an enhanced visual representation
+
+```{r}
+order_norm_200_diffs_closeup <- order_norm_200_diffs %>%
+  hclust("ave")
+d1 <- cut(as.dendrogram(order_norm_200_diffs_closeup), h=1)
+d10 <- cut(as.dendrogram(order_norm_200_diffs_closeup), h=10)
+```
+
+### Plot some branches of the closeup data set
+
+```{r}
+# $lower[[129]]
+# 'dendrogram' with 2 branches and 2 members total, at height 0.9451381 
+plot(d1$lower[[129]])
+
+# $lower[[1]]
+# 'dendrogram' with 2 branches and 3 members total, at height 5.014784 
+plot(d10$lower[[1]])
+```
+
+
+
+# Compare the buying patterns of 1000 random users who bought more than 2000 products: `user_id` == 153479 & 44294
+
+## Prepare the data sets for each user
+
+```{r}
+user153479 <- 
+  orders %>%
+  filter(user_id == 153479) %>% 
+  left_join(order_products, by="order_id") %>%
+  left_join(products, by="product_id")  
+  
+user44294 <- 
+  orders %>%
+  filter(user_id == 44294) %>%  
+  left_join(order_products, by="order_id") %>%
+  left_join(products, by="product_id")  
+```
+
+## Conduct feature engineering
+
+### Create a varable for discrete factored time of the day
+
+```{r}
+new_levels <- c("Late Evening","Late Evening","Late Evening","Dawn","Dawn","Dawn","Dawn",
+                "Morning","Morning","Morning","Morning","Morning",
+                "Afternoon","Afternoon","Afternoon","Afternoon","Afternoon",
+                "Evening","Evening","Evening","Evening",
+                "Late Evening","Late Evening","Late Evening","Late Evening")
+user153479$timeofday <- factor(new_levels[user153479$order_hour_of_day])
+user153479$timeofday <- factor(user153479$timeofday, levels = c("Dawn", "Morning", "Afternoon", "Evening", "Late Evening"))
+user44294$timeofday <- factor(new_levels[user44294$order_hour_of_day])
+user44294$timeofday <- factor(user44294$timeofday, levels = c("Dawn", "Morning", "Afternoon", "Evening", "Late Evening"))
+rm(new_levels)
+```
+
+### Create a varable for continuous numeric time of the day
+
+```{r}
+user153479$timeofday_num <- as.numeric(user153479$order_hour_of_day)
+user44294$timeofday_num <- as.numeric(user44294$order_hour_of_day)
+```
+
+### Create a varable for ordered factor day of the week
+
+```{r}
+levels(user153479$order_dow) <- c("Sunday", "Monday", "Tuesday", "Wednesday",
+                                                 "Thursday", "Friday", "Saturday")
+levels(user44294$order_dow) <- c("Sunday", "Monday", "Tuesday", "Wednesday",
+                                                 "Thursday", "Friday", "Saturday")
+```
+
+## Visualize discrete time of the day
+
+These users do not look that similar just by looking at the `days_since_prior_order` by `timeofday` plot. However, the plots reflect order chronology that the cluster data did not take into account.
+
+```{r, warning=FALSE, fig.width=10, fig.height=7.5}
+user153479 %>%
+  na.omit() %>%
+  ggplot(aes(x=order_number, y=days_since_prior_order)) +
+  geom_line(color="#FF9999") +
+  geom_point(aes(size = 0.5, alpha = 0.25, color=timeofday)) +
+  scale_color_brewer(palette = "RdPu") +
+  guides(size=FALSE, alpha=FALSE) +
+  geom_smooth(stat="smooth", position="stack", method="loess") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(title="Days Since Prior Order for User ID 153479",
+       subtitle="by Time of the Day",
+       color="Time of the Day",
+       size="Size",
+       x="Order Chronology", y="Days Since Prior Order",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+```{r, warning=FALSE, fig.width=10, fig.height=7.5}
+user44294 %>%
+  na.omit() %>%
+  ggplot(aes(x=order_number, y=days_since_prior_order)) +
+  geom_line(color="#FF9999") +
+  geom_point(aes(size = 0.5, alpha = 0.25, color=timeofday)) +
+  scale_color_brewer(palette = "RdPu") +
+  guides(size=FALSE, alpha=FALSE) +
+  geom_smooth(stat="smooth", position="stack", method="loess") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(title="Days Since Prior Order for User ID 44294",
+       subtitle="by Time of the Day",
+       color="Time of the Day",
+       size="Size",
+       x="Order Chronology", y="Days Since Prior Order",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+## Table the comparisons
+
+Tables generally reflect more similarities in the buying patterns of these users.
+
+### Conclusion: sort of similar in `order_dow`
+
+```{r}
+# user153479: Most orders were made on Monday (65) and Tuesday (51).  
+table(user153479$order_dow) 
+
+# user44294: Most orders were made on Monday (64) and Tuesday (64).
+table(user44294$order_dow) 
+```
+
+### Conclusion: similar in `timeofday`
+
+```{r}
+# user153479: Most orders were made in the afternoon (139) as we saw above.
+table(user153479$timeofday) 
+
+# user44294: Most orders were made in the afternoon (163) as we saw above.
+table(user44294$timeofday) 
+```
+
+### Conclusion: similar in `days_since_prior_order`
+
+```{r}
+# user153479: Ten days (47) was the most common duration till the next order and the next common were four, three, twenty-one days, respectively (23, 21, 20). 
+table(user153479$days_since_prior_order) 
+
+# user44294: Eleven days (30) was the most common duration till the next order and the next common were six, thirty, seven, and eight days, respectively (28, 24, 21, 19). 
+table(user44294$days_since_prior_order) 
+```
+
+### Conclusion: not so similar in `avg_days_since` by `timeofday`
+
+```{r}
+user153479 %>% 
+  group_by(timeofday) %>% 
+  na.omit() %>%
+  summarize(avg_days_since=mean(days_since_prior_order)) 
+user44294 %>% 
+  group_by(timeofday) %>% 
+  na.omit() %>%
+  summarize(avg_days_since=mean(days_since_prior_order)) 
+```
+
+### Conclusion: not so similar in `avg_days_since` by `order_hour_of_day`
+
+```{r}
+user153479 %>% 
+  group_by(order_hour_of_day) %>% 
+  na.omit() %>%
+  summarize(avg_days_since=mean(days_since_prior_order)) %>%
+  plot()
+user44294 %>% 
+  group_by(order_hour_of_day) %>% 
+  na.omit() %>%
+  summarize(avg_days_since=mean(days_since_prior_order)) %>%
+  plot()
+```
+
+### Conclusion: sort of similar in `avg_hr_of_day` and `sd_hr_of_day`
+
+```{r}
+# user153479: Most orders were made between noon and 2pm with the exception of the only order on Friday (5pm). The SD on each day of the week range from 0 to 4.  
+user153479 %>% 
+  group_by(order_dow) %>% 
+  na.omit() %>%
+  summarize(avg_hr_of_day=mean(as.numeric(order_hour_of_day)),
+            sd_hr_of_day=sd(as.numeric(order_hour_of_day))) %>% head(n=10) 
+# user44294: Most orders were made between noon and 4pm with the exception of the only order on Saturday (11pm). The SD on each day of the week range from 0 to 2.  
+user44294 %>% 
+  group_by(order_dow) %>% 
+  na.omit() %>%
+  summarize(avg_hr_of_day=mean(as.numeric(order_hour_of_day)),
+            sd_hr_of_day=sd(as.numeric(order_hour_of_day))) %>% head(n=10)
+```
+
+
+## Create a more detailed visualization: Histogram of `order_dow` for `user_id` 153479 & 44294
+
+user153479 made most orders on Mondays and Tuesdays in the the Afternoon (12-4pm), Morning (9am), and the Evening (5-6pm) in this order. The order hours are more spread out.
+
+```{r, warning=FALSE, fig.width=10, fig.height=7.5}
+user153479 %>%
+  na.omit() %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=order_dow, y=count, fill=order_hour_of_day)) +
+  geom_bar(stat="identity") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(title="Day of the Week: Orders for User ID 153479",
+       subtitle="",
+       x="Day of the Week",
+       y="Count",
+       fill="Order Hour of Day",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+user44294 made most orders on Mondays and Wednesdays in the Afternoon (2pm-4pm). The order hours are not as spread out.
+
+```{r, warning=FALSE, fig.width=10, fig.height=7.5}
+user44294 %>%
+  na.omit() %>%
+  group_by(order_dow, order_hour_of_day) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=order_dow, y=count, fill=order_hour_of_day)) +
+  geom_bar(stat="identity") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  labs(title="Day of the Week: Orders for User ID 44294",
+       subtitle="",
+       x="Day of the Week",
+       y="Count",
+       fill="Order Hour of Day",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+
+
+# Process the data for **k-Means** clustering
+
+## Perform k-means clustering on normalized data `order_norm_200_samp`:
+
+```{r}
+set.seed(1)
+num_clusters <- 4
+kmean <- order_norm_200_samp
+order_clusts <- kmean %>%
+  kmeans(centers = num_clusters)%>%
+  fitted("classes")%>%
+  as.character()
+kmean <- kmean %>%
+  mutate(cluster=order_clusts)
+```
+
+```{r,echo=FALSE}
+ggplot(kmean, aes(x=days_since, y=reorder_products))+
+  geom_point(aes(color=cluster),alpha=.25)
+```
+
+### `cluster` == 1 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==1))  
+```
+
+### `cluster` == 2 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==2))    
+```
+
+### `cluster` == 3 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==3))    
+```
+
+### `cluster` == 4 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==4))    
+```
