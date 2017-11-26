@@ -106,6 +106,7 @@ users <- orders_prior %>%
             user.avgDaysSincePriorOrder = mean(days_since_prior_order, na.rm=TRUE))
 ```
 
+
 Some user specific features require data on the number of products they order
 ```{r}
 user_products <- order_products_prior %>%
@@ -134,6 +135,28 @@ rm(users_finalOrder, orders)
 
 ## Feature Engineering: User-Product
 
+### Order Streak Feature
+
+This feature is going to keep track of how many consecutive orders before the current order has a specific user ordered a specific product. The intution behind this is that if a user has ordered a given product every order of their past n orders, than as n gets larger, we expect this user to order this product again with high likelihood.
+
+Note: This is computationally quite expensive, it will probably be best to move all of the data transformation to a seperate file in /DataPrep and have another, seperate file in /PredictiveAnalysis, concerned with just the model training.
+```{r}
+user_product_streak <- order_products_prior %>%
+  arrange(user_id, product_id, order_number) %>%
+  select(user_id, order_number, product_id) %>%
+  mutate(user_product.order_streak = if_else(lag(order_number) == order_number - 1 & lag(product_id) == product_id & lag(user_id) == user_id, 0, 1, 1)) %>%  # 1 when new 'streak group' begins, 0 when streak group continues
+  group_by(cumsum(user_product.order_streak), user_id) %>% #Puts each member of streak group in same numeric group
+  mutate(user_product.order_streak = row_number()) %>%  
+  ungroup() %>%
+  group_by(user_id, product_id) %>%
+  filter(order_number == max(order_number)) %>% # Only want the latest order for each product
+  ungroup() %>%
+  group_by(user_id) %>%
+  mutate(user_product.order_streak = if_else(order_number == max(order_number), as.numeric(user_product.order_streak), 0, 0)) %>% #streak is 0 if product latest order was not the users most recent order
+  select(user_id, product_id, user_product.order_streak)
+```
+
+Addings some other, more basic, User-Product features.
 ```{r}
 user_products <- order_products_prior %>%
   group_by(user_id, product_id) %>% 
@@ -141,7 +164,10 @@ user_products <- order_products_prior %>%
     user_product.orders = n(),
     user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
-    user_product.avgCartPosition = mean(add_to_cart_order))
+    user_product.avgCartPosition = mean(add_to_cart_order)) %>%
+  left_join(user_product_streak, by=c("user_id", "product_id"))
+
+rm(user_product_streak)
 ```
 
 
@@ -156,6 +182,7 @@ rm(prods, users, user_products)
 ```
 
 We join with train dataset reorders to train model in which products are reordered. (I think this means that we are currently only considering possible products that a user can order from the products they have already ordered.)
+
 ```{r}
 data <- data %>% 
   left_join(order_products_train %>% select(user_id, product_id, reordered), 
