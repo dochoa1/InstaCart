@@ -21,83 +21,87 @@ output:
 ```{r echo=FALSE, message=FALSE}
 library(tidyverse)
 library(xgboost)
-library(Ckmeans.1d.dp) # Used for XGBoost visualization
-library(DiagrammeR) # Used for XGBoost visualization
+library(caret)  # Used for confusion matrix
+library(Ckmeans.1d.dp)  # Used for XGBoost visualization
+library(DiagrammeR)  # Used for XGBoost visualization
 ```
 
 This file is used to predict what products a user will order next
 
 # Reading In The Data
-```{r message=FALSE, warning=FALSE }
-train <- read_csv("../Source/trainingData.csv")
-test <- read_csv("../Source/testingData.csv")
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+trainDF <- read_csv("../Source/trainingData.csv")
+# test <- read_csv("../Source/testingData.csv")  # Only to be used when turning in to kaggle competition
 products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
 ```
 
+Since we don't have the answers to the test dataset we need to partition our training set into training and testing to validate our results and avoid overfitting.
 ```{r}
 set.seed(567)
-sampleTrain <- train %>% 
-   sample_frac(0.1)
 
-crossVal <- train %>%
-  filter(!order_id %in% sampleTrain$order_id)
+inTrain <- sample_frac(data.frame(unique(trainDF$order_id)), 0.7)
+
+train <- trainDF %>%
+  filter(order_id %in% inTrain$unique.trainDF.order_id.)
+test <- trainDF %>%
+  filter(!order_id %in% inTrain$unique.trainDF.order_id.)
+
+rm(trainDF)
+rm(inTrain)
+```
+
+For model training we are going to want to seperate the independent variables from the response variable.
+```{r}
+trainIndependents <- train %>% 
+  select(-reordered)
+
+testIndependents <- test %>% 
+  select(-reordered)
 ```
 
 
 # Predictions
 
 ```{r}
-independents <- sampleTrain %>% 
-  select(-reordered)
+trainingMatrix <- xgb.DMatrix(as.matrix(trainIndependents), label = train$reordered)
+testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
+```
 
-trainingMatrix <- xgb.DMatrix(as.matrix(independents), label = sampleTrain$reordered)
-model <- xgboost(data = trainingMatrix, objective="binary:logistic", nrounds = 80, verbose=0)
+## Parameter Tuning
+
+TODO: Tune parameters!
+```{r}
+params <- list("objective" = "binary:logistic",
+               "max_depth" = 6,
+               "eta" = 0.3,
+               "min_child_weight" = 1)
+```
+
+Now to use a 5-fold cross validation to narrow in on the number of iterations to minimize error rate.
+```{r}
+cv <- xgb.cv(data = trainingMatrix, nfold=5, param=params, nrounds=80, early_stopping_rounds=10, verbose=TRUE)
+```
+
+```{r}
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=40, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 ```
 
-
 ```{r}
+xgbpred <- predict(model, testMatrix)
+```
+
+
+Want to only consider items that they have ordered before (obscuring error rates).
+Want to predict: Of the items they have ordered before which items are they going to order again?
+```{r}
+xgbpred <- ifelse(xgbpred > 0.5, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
+confusionMatrix(xgbpred, test$reordered)
+```
+
+We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
+
+```{r eval=FALSE}
 xgb.plot.tree(feature_names=colnames(independents), model=model, n_first_tree=1)
 ```
-
-We can see from this which features are the most important. It is no suprie that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
-
-```{r}
-testMatrix <- xgb.DMatrix(as.matrix(test))
-test$reordered <- predict(model, testMatrix)
-test$reordered <- (test$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it (seems to move around)
-```
-
-```{r}
-crossValMatrix <- xgb.DMatrix(as.matrix(crossVal))
-crossVal$reordered <- predict(model, crossValMatrix)
-crossVal$reordered <- (crossVal$reordered > 0.20) * 1 # 0.20 is random threshold I came up with, experiment with it
-```
-
-## Prediction Accuracy
-
-Lets picture the accuracy of predictions
-```{r}
-crossVal_ex <- crossVal %>%
-  filter(order_id == 1725556) %>%
-  mutate(predictedToOrder = reordered) %>%
-  select(product_id, predictedToOrder)
-
-order_products_ex <- order_products_train %>%
-  filter(order_id == 1725556) %>%
-  mutate(actuallyOrder = 1) %>%
-  select(product_id, actuallyOrder)
-
-prediction_table <- order_products_ex %>%
-  full_join(crossVal_ex, by="product_id")
-  
-prediction_table <- replace(prediction_table,is.na(prediction_table),0)
-prediction_table <- prediction_table %>%
-  mutate(accuracy = actuallyOrder - predictedToOrder) %>%
-  select(product_id, accuracy)
-
-ggplot(data=prediction_table, aes(x=product_id, y=accuracy)) + geom_point(aes(color=accuracy))
-```
-
-We can see from this graphic that the model was able to correctly predict some of the products that the order would contain. However, the model also predicts some products that the user did not order, in addition the model fails to predict a number of products that the user did in fact order.

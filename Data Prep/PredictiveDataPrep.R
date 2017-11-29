@@ -4,6 +4,7 @@ library(tidyverse)
 orders <- read_csv("../Source/orders_sample40.csv")
 order_products <- read_csv("../Source/order_products_sample40.csv")
 
+
 # Preparing the Data
 
 "Cleaning the data by changing variable types"
@@ -143,7 +144,6 @@ data <- data %>%
   left_join(order_products_train %>% select(user_id, product_id, reordered), 
             by = c("user_id", "product_id"))
 
-
 # Data: Test and Train
 
 train <- data %>%
@@ -161,5 +161,5 @@ test <- data %>%
 rm(data)
 
 "Finally we write the training and testing data to /Source"
-write.csv(train, "../Source/trainingData.csv")
-write.csv(test, "../Source/testingData.csv")
+write_csv(train, "../Source/trainingData.csv")
+write_csv(test, "../Source/testingData.csv")

@@ -29,5 +29,5 @@ order_products_sample40 <-
 #   orders - 660 thousand rows
 #   order_products - 6.23 million rows
 
-write.csv(orders_sample40, "../Source/orders_sample40.csv")
-write.csv(order_products_sample40, "../Source/order_products_sample40.csv")
+write_csv(orders_sample40, "../Source/orders_sample40.csv")
+write_csv(order_products_sample40, "../Source/order_products_sample40.csv")
