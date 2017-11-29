@@ -74,7 +74,8 @@ TODO: Tune parameters!
 params <- list("objective" = "binary:logistic",
                "max_depth" = 6,
                "eta" = 0.3,
-               "min_child_weight" = 1)
+               "min_child_weight" = 1,
+               "subsample" = 0.8)
 ```
 
 Now to use a 5-fold cross validation to narrow in on the number of iterations to minimize error rate.
@@ -96,12 +97,45 @@ xgbpred <- predict(model, testMatrix)
 Want to only consider items that they have ordered before (obscuring error rates).
 Want to predict: Of the items they have ordered before which items are they going to order again?
 ```{r}
-xgbpred <- ifelse(xgbpred > 0.5, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
+xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
 confusionMatrix(xgbpred, test$reordered)
+```
+
+
+We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
+
+```{r eval=FALSE}
+xgb.plot.tree(feature_names=colnames(importance), model=model, n_first_tree=1)
+```
+
+# Testing Linear Boostings
+
+```{r}
+paramslinear <- list("objective" = "binary:logistic",
+               "max_depth" = 6,
+               "eta" = 0.3,
+               "min_child_weight" = 1,
+               "booster" = "gblinear", # Test the Linear method
+               "subsample" = 0.8
+               )
+```
+
+
+```{r}
+model_linear <- xgb.train(data = trainingMatrix,, param=paramslinear, nrounds=40, verbose=FALSE)
+importance <- xgb.importance(colnames(trainingMatrix), model = model_linear)
+xgb.ggplot.importance(importance)
+```
+
+```{r}
+xgbpred_linear <- predict(model_linear, testMatrix)
+# Binary Selector
+xgbpred_linear <- ifelse(xgbpred_linear > 0.1, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
+confusionMatrix(xgbpred_linear, test$reordered)
 ```
 
 We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
 
 ```{r eval=FALSE}
-xgb.plot.tree(feature_names=colnames(independents), model=model, n_first_tree=1)
+xgb.plot.tree(feature_names=colnames(importance), model=model, n_first_tree=1)
 ```
