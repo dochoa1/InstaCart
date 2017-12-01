@@ -63,8 +63,7 @@ prods <- order_products_prior %>%
 users <- orders_prior %>%
   group_by(user_id) %>%
   summarise(user.numOrders = max(order_number),
-            user.useInterval = sum(days_since_prior_order, na.rm=TRUE),
-            user.avgDaysSincePriorOrder = mean(days_since_prior_order, na.rm=TRUE))
+            user.useInterval = sum(days_since_prior_order, na.rm=TRUE))
 
 
 "Some user specific features require data on the number of products they order"
@@ -126,14 +125,13 @@ user_products <- order_products_prior %>%
   group_by(user_id, product_id) %>% 
   summarise(
     user_product.orders = n(),
-    user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
-    user_product.avgHourOfDay = mean(as.numeric(order_hour_of_day), na.rm=TRUE)
-  )%>%
+    user_product.avgHourOfDay = mean(as.numeric(order_hour_of_day), na.rm=TRUE),
+    user_product.avgDaysSincePriorOrder = mean(days_since_prior_order))%>%
   left_join(user_product_streak, by=c("user_id", "product_id"))%>%
   ungroup()%>%
   left_join(hour_train)%>%
-  mutate(user_product.avgHourOfDayDifference = as.numeric(order_hour_of_day) - user_product.avgHourOfDay)%>%
+  mutate(user_product.avgHourOfDayDifference = abs(as.numeric(order_hour_of_day) - user_product.avgHourOfDay)) %>%
   select(-order_hour_of_day, -user_product.avgHourOfDay)
 
 rm(user_product_streak)
@@ -142,9 +140,16 @@ rm(hour_train)
 
 # Data: Build Main Data Set
 
+"Now we are going to join all of the feature tables and add some more features that are intertable dependent."
+"TODO: Reorder table to be in a nicer format."
 data <- user_products %>% 
   inner_join(prods, by = "product_id") %>%
-  inner_join(users, by = "user_id")
+  inner_join(users, by = "user_id") %>%
+  mutate(user_product.ordersSinceLastOrdered = user.numOrders - user_product.lastOrder) %>%
+  mutate(user_product.avgDaysSincePriorOrderDifference = abs(user_product.avgDaysSincePriorOrder - days_since_prior_order)) %>%
+  mutate(product.avgDaysSincePriorOrderDifference = abs(product.avgDaysSincePriorOrder - days_since_prior_order)) %>%
+  mutate(user_product.orderRate = user_product.orders / user.numOrders) %>%
+  select(-user_product.lastOrder, -user_product.avgDaysSincePriorOrder, -product.avgDaysSincePriorOrder, -days_since_prior_order)
 
 rm(prods, users, user_products)
 
