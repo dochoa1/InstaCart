@@ -47,6 +47,7 @@ prods <- order_products_prior %>%
   group_by(product_id) %>%
   summarise(product.orders = n(),
             product.reorders = sum(reordered),
+            product.avgDaysSincePriorOrder = mean(days_since_prior_order, na.rm=TRUE),
             product.firstOrders = sum(product.numTimes == 1), # number of users that have ordered this product
             product.secondOrders = sum(product.numTimes == 2)) %>% # number of users that ordered this product more than once
   mutate(product.reorderProbability = product.secondOrders / product.firstOrders) %>%
@@ -117,16 +118,26 @@ user_product_streak <- order_products_prior %>%
 
 
 "Addings some other, more basic, User-Product features."
+hour_train <- order_products_train %>%
+  group_by(user_id,order_hour_of_day) %>%
+  summarise()
+
 user_products <- order_products_prior %>%
   group_by(user_id, product_id) %>% 
   summarise(
     user_product.orders = n(),
     user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
-    user_product.avgCartPosition = mean(add_to_cart_order)) %>%
-  left_join(user_product_streak, by=c("user_id", "product_id"))
+    user_product.avgHourOfDay = mean(as.numeric(order_hour_of_day), na.rm=TRUE)
+  )%>%
+  left_join(user_product_streak, by=c("user_id", "product_id"))%>%
+  ungroup()%>%
+  left_join(hour_train)%>%
+  mutate(user_product.avgHourOfDayDifference = as.numeric(order_hour_of_day) - user_product.avgHourOfDay)%>%
+  select(-order_hour_of_day, -user_product.avgHourOfDay)
 
 rm(user_product_streak)
+rm(hour_train)
 
 
 # Data: Build Main Data Set

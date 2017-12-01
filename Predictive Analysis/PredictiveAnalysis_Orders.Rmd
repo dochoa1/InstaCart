@@ -35,6 +35,7 @@ trainDF <- read_csv("../Source/trainingData.csv")
 products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
 ```
 
+
 Since we don't have the answers to the test dataset we need to partition our training set into training and testing to validate our results and avoid overfitting.
 ```{r}
 set.seed(567)
@@ -53,14 +54,27 @@ rm(inTrain)
 For model training we are going to want to seperate the independent variables from the response variable.
 ```{r}
 trainIndependents <- train %>% 
-  select(-reordered)
+  select(-reordered, -product_id, -order_id, -user_product.avgCartPosition)
 
 testIndependents <- test %>% 
-  select(-reordered)
+  select(-reordered,  -product_id, -order_id, -user_product.avgCartPosition)
 ```
 
+Parameters that we have found to hurt the model more than aid (noise): product_id, order_id, user_product.avgCartPosition
 
 # Predictions
+
+## Null Model 
+
+We are going to want to measure the performance of our prediction against some naive model. A simple model would be the following: If a user orderered this product last time, they will order against this time.
+
+Below we see how such a model performs.
+```{r}
+nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
+confusionMatrix(nullPredict, test$reordered)
+```
+
+## Gradient Boosted Tree Model 
 
 ```{r}
 trainingMatrix <- xgb.DMatrix(as.matrix(trainIndependents), label = train$reordered)
@@ -74,29 +88,28 @@ TODO: Tune parameters!
 params <- list("objective" = "binary:logistic",
                "max_depth" = 6,
                "eta" = 0.3,
-               "min_child_weight" = 1,
+               "min_child_weight" = 10,
                "subsample" = 0.8)
 ```
 
-Now to use a 5-fold cross validation to narrow in on the number of iterations to minimize error rate.
+Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
+
+Still improving after 60 iterations, need to use more! Marginal improvement tho, could focus on this after adding other features or tuning.
 ```{r}
-cv <- xgb.cv(data = trainingMatrix, nfold=5, param=params, nrounds=80, early_stopping_rounds=10, verbose=TRUE)
+cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=40, early_stopping_rounds=8, print_every_n = 10)
 ```
 
 ```{r}
-model <- xgb.train(data = trainingMatrix, param=params, nrounds=40, verbose=FALSE)
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=60, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 ```
 
-```{r}
-xgbpred <- predict(model, testMatrix)
-```
-
-
 Want to only consider items that they have ordered before (obscuring error rates).
 Want to predict: Of the items they have ordered before which items are they going to order again?
+
 ```{r}
+xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
 confusionMatrix(xgbpred, test$reordered)
 ```
@@ -116,8 +129,7 @@ paramslinear <- list("objective" = "binary:logistic",
                "eta" = 0.3,
                "min_child_weight" = 1,
                "booster" = "gblinear", # Test the Linear method
-               "subsample" = 0.8
-               )
+               "subsample" = 0.8)
 ```
 
 
@@ -137,5 +149,5 @@ confusionMatrix(xgbpred_linear, test$reordered)
 We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
 
 ```{r eval=FALSE}
-xgb.plot.tree(feature_names=colnames(importance), model=model, n_first_tree=1)
+xgb.plot.tree(feature_names=colnames(importance), model=model_linear, n_first_tree=1)
 ```
