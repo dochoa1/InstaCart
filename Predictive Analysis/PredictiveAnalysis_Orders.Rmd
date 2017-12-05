@@ -57,10 +57,10 @@ rm(inTrain)
 For model training we are going to want to seperate the independent variables from the response variable.
 ```{r}
 trainIndependents <- train %>% 
-  select(-reordered, -product_id, -order_id)
+  select(-reordered, -product_id, -order_id, -user_id)
 
 testIndependents <- test %>% 
-  select(-reordered,  -product_id, -order_id)
+  select(-reordered,  -product_id, -order_id, -user_id)
 ```
 
 Parameters that we have found to hurt the model more than aid (noise): product_id, order_id

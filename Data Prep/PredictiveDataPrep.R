@@ -165,14 +165,14 @@ data <- data %>%
 train <- data %>%
   ungroup() %>%
   filter(eval_set == "train") %>%
-  select(-eval_set, -user_id)
+  select(-eval_set)
 
 train$reordered[is.na(train$reordered)] <- 0
 
 test <- data %>%
   ungroup() %>%
   filter(eval_set == "test") %>%
-  select(-eval_set, -user_id, -reordered)
+  select(-eval_set, -reordered)
 
 rm(data)
 
