@@ -26,8 +26,6 @@ library(Ckmeans.1d.dp)  # Used for XGBoost visualization
 library(DiagrammeR)  # Used for XGBoost visualization
 ```
 
-This file is used to predict what products a user will order next
-
 # Reading In The Data
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 trainDF <- read_csv("../Source/trainingData.csv")
@@ -90,33 +88,29 @@ TODO: Tune parameters!
 ```{r}
 params <- list("objective" = "binary:logistic",
                "max_depth" = 6,
-               "eta" = 0.3,
+               "eta" = 0.1,
                "min_child_weight" = 10,
                "subsample" = 0.8)
 ```
 
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
 
-Still improving after 60 iterations, need to use more! Marginal improvement tho, could focus on this after adding other features or tuning.
+Still improving after 100 iterations, need to use more! Marginal improvement tho
 ```{r}
-cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=40, early_stopping_rounds=8, print_every_n = 10)
+cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=100, early_stopping_rounds=20, print_every_n = 10)
 ```
 
 ```{r}
-model <- xgb.train(data = trainingMatrix, param=params, nrounds=60, verbose=FALSE)
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=100, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 ```
-
-Want to only consider items that they have ordered before (obscuring error rates).
-Want to predict: Of the items they have ordered before which items are they going to order again?
 
 ```{r}
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
 confusionMatrix(xgbpred, test$reordered)
 ```
-
 
 We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
 

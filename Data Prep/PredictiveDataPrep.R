@@ -125,6 +125,7 @@ user_products <- order_products_prior %>%
   group_by(user_id, product_id) %>% 
   summarise(
     user_product.orders = n(),
+    user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
     user_product.avgHourOfDay = mean(as.numeric(order_hour_of_day), na.rm=TRUE),
     user_product.avgDaysSincePriorOrder = mean(days_since_prior_order))%>%
@@ -149,7 +150,8 @@ data <- user_products %>%
   mutate(user_product.avgDaysSincePriorOrderDifference = abs(user_product.avgDaysSincePriorOrder - days_since_prior_order)) %>%
   mutate(product.avgDaysSincePriorOrderDifference = abs(product.avgDaysSincePriorOrder - days_since_prior_order)) %>%
   mutate(user_product.orderRate = user_product.orders / user.numOrders) %>%
-  select(-user_product.lastOrder, -user_product.avgDaysSincePriorOrder, -product.avgDaysSincePriorOrder, -days_since_prior_order)
+  mutate(user_product.orderRateSinceFirstOrdered = user_product.orders / (user.numOrders - user_product.firstOrder + 1)) %>%
+  select(-user_product.lastOrder, -user_product.avgDaysSincePriorOrder, -user_product.firstOrder, -product.avgDaysSincePriorOrder, -days_since_prior_order)
 
 rm(prods, users, user_products)
 
