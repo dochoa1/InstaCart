@@ -52,6 +52,39 @@ xgb.ggplot.importance(importance)
 
 # Prediction 
 xgbpred <- predict(model, testMatrix)
-test_res <- mutate(test,pred=xgbpred)
+xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+con <- confusionMatrix(xgbpred, test$reordered)
+conMatrix <- con$table
+precision <- conMatrix[2,2]/sum(conMatrix[,2])
+recall <- conMatrix[2,2]/sum(conMatrix[,1])
+f1 <- 2*precision*recall/(precision+recall)
+f1
 
-# Create Aisle Adjacency Matrix for each user
+nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
+con <- confusionMatrix(nullPredict, test$reordered)
+conMatrix <- con$table
+precision <- conMatrix[2,2]/sum(conMatrix[,2])
+recall <- conMatrix[2,2]/sum(conMatrix[,1])
+f1 <- 2*precision*recall/(precision+recall)
+f1
+###########################
+
+#### AISLE ANALYSIS
+
+# Prepare Data
+aisles = read_csv("../Source/aisles.csv")
+departments = read_csv("../Source/departments.csv")
+products = read_csv("../Source/products.csv")
+order_products_sample40 = read_csv("../Source/order_products_sample40.csv")
+
+orders_aisles_sample40 <- order_products_sample40%>%
+  left_join(products)
+  select(order_id,aisle_id)%>%
+  distinct(order_id,aisle_id)
+
+# Convert the table of order_id and aisles_id into an incidence matrix
+aisle_incidence=as.matrix(table(cbind.data.frame(order=orders_aisles_sample40$order_id,aisle=c(orders_aisles_sample40$aisle_id))))
+# Multiple with its transpose to create the adjacency matrix for 
+aisle_adjacency=t(aisle_incidence)%*%aisle_incidence
+# Divide each row with corresponding diagonal value
+aisle_probability <- aisle_adjacency*(1/diag(aisle_adjacency))
