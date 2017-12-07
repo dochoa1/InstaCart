@@ -61,7 +61,8 @@ testIndependents <- test %>%
   select(-reordered,  -product_id, -order_id, -user_id)
 ```
 
-Parameters that we have found to hurt the model more than aid (noise): product_id, order_id
+DONT DELETE: FOR BLOG/PRESENTATION
+Parameters that we have found to hurt the model more than aid (noise): product_id, order_id, product.avgCartPosition, user_product.avgCartPosition, -user_product.avgHourOfDayDifference, -user.avgOrderSize, -user.numOrders)
 
 # Predictions
 
@@ -72,7 +73,7 @@ We are going to want to measure the performance of our prediction against some n
 Below we see how such a model performs.
 ```{r}
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-confusionMatrix(nullPredict, test$reordered)
+(nullCon <- confusionMatrix(nullPredict, test$reordered))
 ```
 
 ## Gradient Boosted Tree Model 
@@ -97,13 +98,18 @@ Now to use a 4-fold cross validation to narrow in on the number of iterations to
 
 Still improving after 100 iterations, need to use more! Marginal improvement tho
 ```{r}
-cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=100, early_stopping_rounds=20, print_every_n = 10)
+cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=130, early_stopping_rounds=20, print_every_n = 10)
 ```
 
 ```{r}
-model <- xgb.train(data = trainingMatrix, param=params, nrounds=100, verbose=FALSE)
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=50, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
+```
+
+Looking at the stats of the feature importance
+```{r}
+importance
 ```
 
 ```{r}
@@ -116,35 +122,4 @@ We can see from this which features are the most important. It is no suprise tha
 
 ```{r eval=FALSE}
 xgb.plot.tree(feature_names=colnames(importance), model=model, n_first_tree=1)
-```
-
-# Testing Linear Boostings
-
-```{r}
-paramslinear <- list("objective" = "binary:logistic",
-               "max_depth" = 6,
-               "eta" = 0.3,
-               "min_child_weight" = 1,
-               "booster" = "gblinear", # Test the Linear method
-               "subsample" = 0.8)
-```
-
-
-```{r}
-model_linear <- xgb.train(data = trainingMatrix,, param=paramslinear, nrounds=40, verbose=FALSE)
-importance <- xgb.importance(colnames(trainingMatrix), model = model_linear)
-xgb.ggplot.importance(importance)
-```
-
-```{r}
-xgbpred_linear <- predict(model_linear, testMatrix)
-# Binary Selector
-xgbpred_linear <- ifelse(xgbpred_linear > 0.1, 1, 0) # 0.2 is threshold I came up with after messing around, experiment with it
-confusionMatrix(xgbpred_linear, test$reordered)
-```
-
-We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
-
-```{r eval=FALSE}
-xgb.plot.tree(feature_names=colnames(importance), model=model_linear, n_first_tree=1)
 ```
