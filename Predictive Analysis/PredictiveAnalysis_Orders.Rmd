@@ -79,8 +79,7 @@ accuracy.Test <- function(prediction,reference){
   precision <- matrix[2,2]/sum(matrix[,2])
   recall <- matrix[2,2]/sum(matrix[2,])
   f1 <- 2*precision*recall/(precision+recall)
-  stat=list(precision=precision,recall=recall,f1=f1)
-  result=list(matrix=matrix,stat=stat)
+  result=list(matrix=matrix,precision=precision,recall=recall,f1=f1)
   return(result)
 }
 ```
@@ -134,7 +133,6 @@ importance
 ```{r}
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-confusionMatrix(xgbpred, test$reordered)
 accuracy.Test(xgbpred,test$reordered)
 ```
 
