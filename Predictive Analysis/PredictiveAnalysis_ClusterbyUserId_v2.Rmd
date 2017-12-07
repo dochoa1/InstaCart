@@ -1,0 +1,327 @@
+---
+title: "InstaCart Predictive Analysis: K-Means by `user_id`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "December 6, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(ggplot2)
+library(Hmisc)
+library(mclust)
+library(BBmisc)
+library(dplyr)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+# Load the Data
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+load("../Source/order_products.Rda")
+load("../Source/orders.Rda")
+order_products <- order_products
+orders <- orders
+products <- read_csv("../Source/products.csv")
+departments <- read_csv("../Source/departments.csv")
+aisles <- read_csv("../Source/aisles.csv")
+```
+
+
+
+# Create a Sample Data with 60000 Users for the Anticipated Loss for Filter (`uid.numProducts` >= 50)
+
+```{r}
+set.seed(825)  # Allows for reproducable sample results
+random_users <- sample(unique(orders$user_id), 60000)  #60000 users are randomly chosen (<20% sample)
+orders_sample60 <-
+  subset(orders, user_id %in% random_users) 
+orders_sample60[is.na(orders_sample60)] <- 0        # Replace NA's with 0 (only `days_since_prior_order` has NA's)
+orders_sample60 <- as.data.frame(orders_sample60)   # Convert into a data table
+order_products_sample60 <-                          # No variable has NA
+  subset(order_products, order_id %in% unique(orders_sample60$order_id))
+
+rm(random_users)
+```
+
+
+
+# Prepare the Data: User Data - Users who Purchased More Than 50 Products
+
+Note: The `user_id` column is replaced as a rowname(df) in all data tables
+
+
+## Prior & Train Data
+
+```{r}
+uid_50g_prior <- order_products_sample60 %>%
+  left_join(orders_sample60, by="order_id") %>%
+  filter(eval_set == "prior") %>%
+  group_by(user_id) %>%
+  mutate(uid.reorderProducts = ifelse(is.na(sum(reordered)), 0, sum(reordered))) %>%
+  summarise(uid.numProducts=n(), 
+            uid.reorderProducts=sum(uid.reorderProducts),
+            uid.reordOrdRatio=uid.reorderProducts/uid.numProducts,
+            uid.aveDaysSince=mean(days_since_prior_order),
+            uid.minDaysSince=min(days_since_prior_order),
+            uid.maxDaysSince=max(days_since_prior_order),
+            uid.sdDaysSince=sd(days_since_prior_order),
+            uid.aveHr=mean(as.numeric(order_hour_of_day)),
+            uid.sdHr=sd(as.numeric(order_hour_of_day)),
+            uid.aveDow=mean(as.numeric(order_dow)),
+            uid.sdDow=sd(as.numeric(order_dow))) %>%
+  filter(uid.numProducts >= 50)
+
+glimpse(uid_50g_prior)                          # 40574 users who ordered more than 50 items
+anyNA(uid_50g_prior)
+uid_50g_prior <- as.data.frame(uid_50g_prior)   # Convert into a data table
+
+
+uid_50g_train <- order_products_sample60 %>%
+  left_join(orders_sample60, by="order_id") %>%
+  filter(eval_set == "train") %>%
+  group_by(user_id) %>%
+  mutate(uid.reorderProducts = ifelse(is.na(sum(reordered)), 0, sum(reordered))) %>%
+  summarise(uid.numProducts=n(), 
+            uid.reorderProducts=sum(uid.reorderProducts),
+            uid.reordOrdRatio=uid.reorderProducts/uid.numProducts,
+            uid.aveDaysSince=mean(days_since_prior_order),
+            uid.minDaysSince=min(days_since_prior_order),
+            uid.maxDaysSince=max(days_since_prior_order),
+            uid.sdDaysSince=sd(days_since_prior_order),
+            uid.aveHr=mean(as.numeric(order_hour_of_day)),
+            uid.sdHr=sd(as.numeric(order_hour_of_day)),
+            uid.aveDow=mean(as.numeric(order_dow)),
+            uid.sdDow=sd(as.numeric(order_dow))) %>%
+  filter(uid.numProducts >= 50)
+
+glimpse(uid_50g_train)     # 48 users who ordered more than 50 items
+anyNA(uid_50g_train)
+uid_50g_train <- as.data.frame(uid_50g_train)   # Convert into a data table
+```
+
+
+## Do Feature Engineering of the User Data Taken from `PredictiveDataPrep.R`
+
+```{r}
+uid_fe <- orders_sample60 %>%
+  group_by(user_id) %>%
+  summarise(uid.numOrders = max(order_number),                         # number of orders made
+            uid.accDaysSince = sum(days_since_prior_order, na.rm=TRUE)) # accumulative `days_since_prior_order`
+```
+
+
+## Combine `uid_50g_prior` & `uid_fe`
+
+### Without Rowname
+
+```{r}
+uid_50g_prior <-
+  uid_50g_prior %>%
+  left_join(uid_fe, by="user_id")
+
+uid_50g_train <-
+  uid_50g_train %>%
+  left_join(uid_fe, by="user_id")
+```
+
+### With Rowname for k-means clustering
+
+```{r}
+uid_50g_prior_rn <- uid_50g_prior
+uid_50g_train_rn <- uid_50g_train
+
+rownames(uid_50g_prior_rn) <- uid_50g_prior_rn$user_id
+rownames(uid_50g_train_rn) <- uid_50g_train_rn$user_id
+uid_50g_prior_rn[,1] <- NULL
+uid_50g_train_rn[,1] <- NULL
+save(uid_50g_prior_rn, file="../Source/uid_50g_prior_rn.Rda") # data table with `user_id` as row names for cluster purposes
+save(uid_50g_train_rn, file="../Source/uid_50g_train_rn.Rda") # data table with `user_id` as row names for cluster purposes
+```
+
+
+
+# Normalize the data set of users who purchased more than 50 products
+
+```{r}
+uid_prior_cl <- uid_50g_prior_rn
+uid_prior_cl_norm <- normalize(uid_50g_prior_rn)
+```
+
+
+
+# Make k-means data table and keep the rownames as user id
+
+```{r}
+set.seed(357)
+num_clusters <- 8
+
+kmean <- uid_prior_cl_norm %>%
+  na.omit()
+
+kmean2 <- uid_prior_cl_norm %>%
+  na.omit()
+
+order_clusts <- kmean %>%
+  kmeans(centers = num_clusters)%>%
+  fitted("classes")%>%
+  as.character() 
+
+kmean <- kmean %>%
+  mutate(cluster=order_clusts)
+
+names(kmean)
+
+
+kmean3 <- kmean2 %>%
+  mutate(uid_order = rownames(kmean2),
+         tempo = 1:nrow(kmean2)) %>%
+  select(uid_order, tempo)
+
+kmean4 <- kmean %>%
+  mutate(tempo = 1:nrow(kmean))
+
+kmean_final <- kmean4 %>%
+  left_join(kmean3, by = "tempo")
+
+names(kmean_final)
+length(unique(kmean_final$uid_order))==nrow(kmean_final)
+rownames(kmean_final) <- kmean_final$uid_order
+
+glimpse(kmean_final)
+kmean_final[,15:16] <- NULL
+save(kmean_final, file="../Source/kmean_final.Rda")
+
+rm(kmean, kmean2, kmean3, kmean4, num_clusters, order_clusts, uid_prior_cl_norm, uid_prior_cl)
+```
+
+
+
+# Plot k-means
+
+```{r,echo=FALSE}
+ggplot(kmean_final, aes(x=uid.aveDaysSince, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster),alpha=.25)
+```
+
+
+
+## `cluster` == 1 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final,aes(x=uid.aveDaysSince, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==1))  
+```
+
+
+
+## `cluster` == 2 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final,aes(x=uid.aveDaysSince, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==2))    
+```
+
+
+
+## `cluster` == 3 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final,aes(x=uid.aveDaysSince, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==3))
+  # +geom_text(aes(label=rownames(kmean)), size=3, vjust=-0.5) 
+```
+
+
+
+## `cluster` == 4 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final,aes(x=uid.aveDaysSince, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==4))
+```
+
+
+
+# Create a Variable for the User Ids in Each Cluster
+
+```{r}
+clust1 <- if_else(kmean_final$cluster==1, rownames(kmean_final), "NA")
+clust1 <- clust1[!grepl("NA", clust1)]
+length(clust1) 
+anyNA(clust1)
+```
+
+
+```{r}
+clust2 <- if_else(kmean_final$cluster==2, rownames(kmean_final), "NA")
+clust2 <- clust2[!grepl("NA", clust2)] 
+length(clust2)
+anyNA(clust2)
+```
+
+
+```{r}
+clust3 <- if_else(kmean_final$cluster==3, rownames(kmean_final), "NA")
+clust3 <- clust3[!grepl("NA", clust3)]
+length(clust3)
+anyNA(clust3)
+```
+
+
+```{r}
+clust4 <- if_else(kmean_final$cluster==4, rownames(kmean_final), "NA")
+clust4 <- clust4[!grepl("NA", clust4)]
+length(clust4)
+anyNA(clust4)
+```
+
+
+```{r}
+clust5 <- if_else(kmean_final$cluster==5, rownames(kmean_final), "NA")
+clust5 <- clust5[!grepl("NA", clust5)]
+length(clust5)
+anyNA(clust5)
+```
+
+
+```{r}
+clust6 <- if_else(kmean_final$cluster==6, rownames(kmean_final), "NA")
+clust6 <- clust6[!grepl("NA", clust6)]
+length(clust6)
+anyNA(clust6)
+```
+
+
+```{r}
+clust7 <- if_else(kmean_final$cluster==7, rownames(kmean_final), "NA")
+clust7 <- clust7[!grepl("NA", clust7)]
+length(clust7)
+anyNA(clust7)
+```
+
+
+```{r}
+clust8 <- if_else(kmean_final$cluster==8, rownames(kmean_final), "NA")
+clust8 <- clust8[!grepl("NA", clust8)]
+length(clust8)
+anyNA(clust8)
+```
