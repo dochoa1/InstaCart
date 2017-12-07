@@ -53,20 +53,13 @@ xgb.ggplot.importance(importance)
 # Prediction 
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-con <- confusionMatrix(xgbpred, test$reordered)
-conMatrix <- con$table
-precision <- conMatrix[2,2]/sum(conMatrix[,2])
-recall <- conMatrix[2,2]/sum(conMatrix[,1])
-f1 <- 2*precision*recall/(precision+recall)
-f1
+accuracy.Test(xgbpred,test$reordered)
+
 
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-con <- confusionMatrix(nullPredict, test$reordered)
-conMatrix <- con$table
-precision <- conMatrix[2,2]/sum(conMatrix[,2])
-recall <- conMatrix[2,2]/sum(conMatrix[,1])
-f1 <- 2*precision*recall/(precision+recall)
-f1
+accuracy.Test(nullPredict,test$reordered)
+
+
 ###########################
 
 #### AISLE ANALYSIS

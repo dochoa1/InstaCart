@@ -66,6 +66,25 @@ Parameters that we have found to hurt the model more than aid (noise): product_i
 
 # Predictions
 
+## Accuracy Measurment: F-1 Score
+
+The standard measurement of accuracy for binary classification is F-1 score. It considers both the `precision` and the `recall` rate of the prediction: `precision` is the number of correct positive results divided by the number of all positive results, and `recall` is the number of correct positive results divided by the number of true positive results. Source: Wikipedia
+
+We define a function that takes the predictions and references as input, and returns the confusion matrix, precision, recall, and F-1 Score
+
+```{r}
+accuracy.Test <- function(prediction,reference){
+  con <- confusionMatrix(prediction,reference)
+  matrix <- con$table
+  precision <- matrix[2,2]/sum(matrix[,2])
+  recall <- matrix[2,2]/sum(matrix[2,])
+  f1 <- 2*precision*recall/(precision+recall)
+  stat=list(precision=precision,recall=recall,f1=f1)
+  result=list(matrix=matrix,stat=stat)
+  return(result)
+}
+```
+
 ## Null Model 
 
 We are going to want to measure the performance of our prediction against some naive model. A simple model would be the following: If a user orderered this product last time, they will order against this time.
@@ -73,7 +92,7 @@ We are going to want to measure the performance of our prediction against some n
 Below we see how such a model performs.
 ```{r}
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-(nullCon <- confusionMatrix(nullPredict, test$reordered))
+accuracy.Test(nullPredict,test$reordered)
 ```
 
 ## Gradient Boosted Tree Model 
@@ -115,7 +134,7 @@ importance
 ```{r}
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-confusionMatrix(xgbpred, test$reordered)
+accuracy.Test(nullPredict,test$reordered)
 ```
 
 We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
