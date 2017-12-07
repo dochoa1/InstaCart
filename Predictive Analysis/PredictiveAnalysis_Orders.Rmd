@@ -114,13 +114,13 @@ params <- list("objective" = "binary:logistic",
 
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
 
-Still improving after 100 iterations, need to use more! Marginal improvement tho
+Still improving after 130 iterations, need to use more! Marginal improvement tho
 ```{r}
-cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=130, early_stopping_rounds=20, print_every_n = 10)
+cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
 ```
 
 ```{r}
-model <- xgb.train(data = trainingMatrix, param=params, nrounds=50, verbose=FALSE)
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=130, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 ```
