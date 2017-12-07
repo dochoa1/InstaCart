@@ -70,12 +70,10 @@ users <- orders_prior %>%
 
 user_products <- order_products_prior %>%
   group_by(user_id) %>%
-  summarise(user.totalProducts = n(),
-            user.reorderRatio = sum(reordered == 1) / sum(order_number > 1))
+  summarise(user.reorderRatio = sum(reordered == 1) / sum(order_number > 1))
 
 users <- users %>%
-  inner_join(user_products, by="user_id") %>%
-  mutate(user.avgOrderSize = user.totalProducts / user.numOrders)
+  inner_join(user_products, by="user_id")
 
 rm(user_products)
 
@@ -127,13 +125,11 @@ user_products <- order_products_prior %>%
     user_product.orders = n(),
     user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
-    user_product.avgHourOfDay = mean(as.numeric(order_hour_of_day), na.rm=TRUE),
     user_product.avgDaysSincePriorOrder = mean(days_since_prior_order))%>%
   left_join(user_product_streak, by=c("user_id", "product_id"))%>%
   ungroup()%>%
   left_join(hour_train)%>%
-  mutate(user_product.avgHourOfDayDifference = abs(as.numeric(order_hour_of_day) - user_product.avgHourOfDay)) %>%
-  select(-order_hour_of_day, -user_product.avgHourOfDay)
+  select(-order_hour_of_day)
 
 rm(user_product_streak)
 rm(hour_train)
@@ -151,7 +147,7 @@ data <- user_products %>%
   mutate(product.avgDaysSincePriorOrderDifference = abs(product.avgDaysSincePriorOrder - days_since_prior_order)) %>%
   mutate(user_product.orderRate = user_product.orders / user.numOrders) %>%
   mutate(user_product.orderRateSinceFirstOrdered = user_product.orders / (user.numOrders - user_product.firstOrder + 1)) %>%
-  select(-user_product.lastOrder, -user_product.avgDaysSincePriorOrder, -user_product.firstOrder, -product.avgDaysSincePriorOrder, -days_since_prior_order)
+  select(-user_product.lastOrder, -user_product.avgDaysSincePriorOrder, -user_product.firstOrder, -product.avgDaysSincePriorOrder, -user.numOrders)
 
 rm(prods, users, user_products)
 
