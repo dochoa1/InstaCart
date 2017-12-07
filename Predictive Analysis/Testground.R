@@ -7,6 +7,18 @@ library(caret)  # Used for confusion matrix
 library(Ckmeans.1d.dp)  # Used for XGBoost visualization
 library(DiagrammeR)  # Used for XGBoost visualization
 
+# Testing function
+accuracy.Test <- function(prediction,reference){
+  con <- confusionMatrix(prediction,reference)
+  matrix <- con$table
+  precision <- matrix[2,2]/sum(matrix[,2])
+  recall <- matrix[2,2]/sum(matrix[2,])
+  f1 <- 2*precision*recall/(precision+recall)
+  result=list(matrix=matrix,precision=precision,recall=recall,f1=f1)
+  return(result)
+}
+
+#
 
 # Read Data
 trainDF <- read_csv("../Source/trainingData.csv")
@@ -34,6 +46,11 @@ testIndependents <- test %>%
 
 trainingMatrix <- xgb.DMatrix(as.matrix(trainIndependents), label = train$reordered)
 testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
+
+# Null model
+nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
+accuracy.Test(nullPredict,test$reordered)
+
 
 # Parameters setting
 params <- list("objective" = "binary:logistic",
