@@ -112,28 +112,64 @@ params <- list("objective" = "binary:logistic",
                "subsample" = 0.8)
 ```
 
+
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
 
-Still improving after 130 iterations, need to use more! Marginal improvement tho
-```{r}
+Ideal number of iterations found through cv.
+```{r eval=FALSE}
 cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
 ```
 
-```{r}
-model <- xgb.train(data = trainingMatrix, param=params, nrounds=130, verbose=FALSE)
-importance <- xgb.importance(colnames(trainingMatrix), model = model)
-xgb.ggplot.importance(importance)
+Now to plot the error
+```{r eval=FALSE}
+ggplot(data=cv$evaluation_log, aes(x=iter, y=test_error_mean)) + geom_line() + geom_point(x=cv$best_iteration, y=min(cv$evaluation_log$test_error_mean), color="red") + labs(title="Optimal nrounds", subtitle="Using Binary Classification Error Rate", x="nrounds", y="Test Error Mean")
 ```
 
-Looking at the stats of the feature importance
+Below we do a manual grid search for fine tuning hyperparameters (max_depth and min_child_weight in this example.) Note that this is very computationally expensive and will take quite some time.
+```{r, eval=FALSE}
+grid <- expand.grid(
+  nrounds = 200,
+  colsample_bytree = 1,
+  gamma = 1,
+  eta = 0.1,
+  subsample = 0.8,
+  max_depth = c(5,6),
+  min_child_weight = c(8,10)
+)
+
+# Have to create new labeled reordered column because 0 and 1 are not valid names.
+gridSearchLabels <- train$reordered
+gridSearchLabels[gridSearchLabels==0] <- 'no'
+gridSearchLabels[gridSearchLabels ==1] <- 'yes'
+
+control <- trainControl(method="cv", number=4, verboseIter = TRUE, returnData = FALSE, returnResamp = "all", classProbs = TRUE, summaryFunction = twoClassSummary, allowParallel = TRUE)
+gridModel = train(x=as.matrix(trainIndependents), y=as.factor(gridSearchLabels),
+trControl=control,
+tuneGrid=grid,
+method="xgbTree"
+)
+```
+
+Now to plot reults and find the best parameters 
+```{r, eval=FALSE}
+ggplot(gridModel$results, aes(x=as.factor(max_depth), y = min_child_weight, size = ROC, color = ROC)) + geom_point() +
+theme_bw() + scale_size_continuous(guide = "none")
+gridModel$bestTune
+```
+
+## Predictions
+
 ```{r}
-importance
+model <- xgb.train(data = trainingMatrix, param=params, nrounds=200, verbose=FALSE)
+importance <- xgb.importance(colnames(trainingMatrix), model = model)
+xgb.ggplot.importance(importance)
 ```
 
 ```{r}
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-accuracy.Test(xgbpred,test$reordered)
+confusionMatrix(xgbpred, test$reordered)
+accuracy.Test(xgbpred, test$reordered)
 ```
 
 We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.

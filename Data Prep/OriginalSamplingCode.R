@@ -15,10 +15,10 @@ order_products <- rbind(order_products_prior, order_products_train)
 # Randomly sampling the data
 set.seed(42)  # Allows for reproducable sample results
 random_users <- sample(unique(orders$user_id), 40000)  #40000 users are randomly chosen (~20% sample)
-orders_sample40 <-
+orders_sample <-
   subset(orders, user_id %in% random_users)
 
-order_products_sample40 <-
+order_products_sample <-
   subset(order_products, order_id %in% unique(orders_sample40$order_id))
 
 # Before sampling:
@@ -29,5 +29,5 @@ order_products_sample40 <-
 #   orders - 660 thousand rows
 #   order_products - 6.23 million rows
 
-write_csv(orders_sample40, "../Source/orders_sample40.csv")
-write_csv(order_products_sample40, "../Source/order_products_sample40.csv")
+write_csv(orders_sample, "../Source/orders_sample.csv")
+write_csv(order_products_sample, "../Source/order_products_sample.csv")

@@ -1,8 +1,8 @@
 library(tidyverse)
 
 # Reading In The Data (currently using 20% of total data)
-orders <- read_csv("../Source/orders_sample40.csv")
-order_products <- read_csv("../Source/order_products_sample40.csv")
+orders <- read_csv("../Source/orders_sample.csv")
+order_products <- read_csv("../Source/order_products_sample.csv")
 
 
 # Preparing the Data
