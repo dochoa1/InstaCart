@@ -33,13 +33,9 @@ trainDF <- read_csv("../Source/trainingData.csv")
 products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
 ```
 
-```{r}
-trainDF
-```
-
 Since we don't have the answers to the test dataset we need to partition our training set into training and testing to validate our results and avoid overfitting.
 ```{r}
-set.seed(567)
+set.seed(567) # Used for reproducability of results
 
 inTrain <- sample_frac(data.frame(unique(trainDF$order_id)), 0.7)
 
@@ -103,7 +99,6 @@ testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
 
 ## Parameter Tuning
 
-TODO: Tune parameters!
 ```{r}
 params <- list("objective" = "binary:logistic",
                "max_depth" = 6,
@@ -114,8 +109,6 @@ params <- list("objective" = "binary:logistic",
 
 
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
-
-Ideal number of iterations found through cv.
 ```{r eval=FALSE}
 cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
 ```
@@ -125,7 +118,7 @@ Now to plot the error
 ggplot(data=cv$evaluation_log, aes(x=iter, y=test_error_mean)) + geom_line() + geom_point(x=cv$best_iteration, y=min(cv$evaluation_log$test_error_mean), color="red") + labs(title="Optimal nrounds", subtitle="Using Binary Classification Error Rate", x="nrounds", y="Test Error Mean")
 ```
 
-Below we do a manual grid search for fine tuning hyperparameters (max_depth and min_child_weight in this example.) Note that this is very computationally expensive and will take quite some time.
+Below we do a manual grid search for fine tuning hyperparameters (max_depth and min_child_weight in this example). Note that this is very computationally expensive and will take quite some time.
 ```{r, eval=FALSE}
 grid <- expand.grid(
   nrounds = 200,
@@ -165,6 +158,8 @@ importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 ```
 
+We can see from this which features are the most important.
+
 ```{r}
 xgbpred <- predict(model, testMatrix)
 xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
@@ -172,8 +167,54 @@ confusionMatrix(xgbpred, test$reordered)
 accuracy.Test(xgbpred, test$reordered)
 ```
 
-We can see from this which features are the most important. It is no suprise that user_product.orders is very important but we were surpised to find that user.numOrders is very important too. We will investigate this in the future.
 
+## Prediction Comparisons and Visualizations
+
+We are going to build a table that has both all of the products that a order was actually comprised of and all the products that the model predicted it would be comprised of.
+
+Begin with the predictions
+```{r message=FALSE}
+# List of items predicted to be ordered in each order
+predicted_products <- test %>%
+  mutate(prediction = xgbpred) %>%
+  group_by(order_id) %>%
+  filter(prediction == 1) %>%
+  summarise(pred.products = paste(product_id, collapse = ", "))
+
+missing <- data.frame(
+  order_id = unique(test$order_id[!test$order_id %in% predicted_products$order_id]),
+  pred.products = "None"
+)
+
+predicted_products <- predicted_products %>%
+  bind_rows(missing) %>%
+  arrange(order_id)
+
+rm(missing)
+```
+
+Now the actual orders and then joining with the predictions.
+```{r message=FALSE}
+# List of items actually ordered in each order
+products_comparison <- test %>%
+  group_by(order_id) %>%
+  filter(reordered == 1) %>%
+  summarise(actual.products = paste(product_id, collapse = ", "))
+
+missing <- data.frame(
+  order_id = unique(test$order_id[!test$order_id %in% products_comparison$order_id]),
+  actual.products = "None"
+)
+
+(products_comparison <- products_comparison %>%
+  bind_rows(missing) %>%
+  left_join(predicted_products, by="order_id") %>%
+  arrange(order_id))
+
+rm(missing)
+```
+
+Below we can look at the tree that the model uses to make its predictions.
 ```{r eval=FALSE}
 xgb.plot.tree(feature_names=colnames(importance), model=model, n_first_tree=1)
 ```

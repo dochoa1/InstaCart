@@ -125,7 +125,7 @@ user_products <- order_products_prior %>%
     user_product.orders = n(),
     user_product.firstOrder = min(order_number),
     user_product.lastOrder = max(order_number),
-    user_product.avgDaysSincePriorOrder = mean(days_since_prior_order))%>%
+    user_product.avgDaysSincePriorOrder = mean(days_since_prior_order, na.rm=TRUE))%>%
   left_join(user_product_streak, by=c("user_id", "product_id"))%>%
   ungroup()%>%
   left_join(hour_train)%>%
