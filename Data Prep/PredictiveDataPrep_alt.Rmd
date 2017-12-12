@@ -1,0 +1,375 @@
+---
+title: "InstaCart Predictive Data Prep: Alternative"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "December 9, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex 
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+
+
+# Original Data Sets (`orders` and `order_products`)
+
+## Load the Original Data
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+load("../Source/order_products.Rda")
+load("../Source/orders.Rda")
+departments <- read_csv("../Source/departments.csv")
+products <- read_csv("../Source/products.csv")
+```
+
+## Sample 60000 Users out of `orders` and `order_products`
+
+Create a Sample Data with 60000 Users for the Anticipated Loss from Filter (`uid.numProducts` >= 50)
+
+```{r}
+set.seed(825)  # Allows for reproducable sample results
+random_users <- sample(unique(orders$user_id), 60000)  # 60000 out of 206209 users are randomly chosen (29% of original data set)
+orders_sample60 <-
+  subset(orders, user_id %in% random_users) 
+orders_sample60[is.na(orders_sample60)] <- 0           # Replace NA's with 0 (only `days_since_prior_order` has NA's)
+orders_sample60 <- as.data.frame(orders_sample60)      # Convert into a data table
+order_products_sample60 <-
+  subset(order_products, order_id %in% unique(orders_sample60$order_id))
+
+table(orders_sample60$eval_set)
+rm(orders, order_products, random_users)
+```
+
+## Prior Dataset from `orders` and `order_products`
+
+We want to build our model only on the `prior` dataset.
+
+```{r}
+orders_sample60_prior <- 
+  orders_sample60 %>%
+  filter(eval_set == "prior")
+
+order_products_sample60_prior <-
+  order_products_sample60 %>%
+  inner_join(orders_sample60_prior, by="order_id")
+
+rm(orders_sample60_prior)
+
+# save(order_products_sample60_prior, file = "../Source/order_products_sample60_prior.Rda")
+```
+
+## Train Dataset from `orders` and `order_products`
+
+We are going to want the results of the `train` dataset for cross-validation later.
+
+```{r}
+orders_sample60_train <- 
+  orders_sample60 %>%
+  filter(eval_set == "train")
+
+order_products_sample60_train <-
+  order_products_sample60 %>%
+  inner_join(orders_sample60_train, by="order_id")
+
+rm(orders_sample60_train)
+
+# save(order_products_sample60_train, file = "../Source/order_products_sample60_train.Rda")
+```
+
+```{r}
+rm(order_products_sample60, orders_sample60)
+```
+
+
+
+# Feature Engineering 
+### For Users who Purchased More Than 50 Products
+
+## Feature Engineering: User Id
+
+`uid.numOrders` & `uid.accDaysSince` Taken from `PredictiveDataPrep.R`
+
+```{r}
+uid.fe <- order_products_sample60_prior %>%
+  group_by(user_id) %>%
+  summarise(uid.numProducts=n(), 
+            uid.reorderProducts=ifelse(is.na(sum(reordered)), 0, sum(reordered)),
+            uid.reordOrdRatio=uid.reorderProducts/sum(order_number > 1), # Reorder-eligible only after first order
+            uid.numOrders = max(order_number),
+            uid.aveDaysSince=mean(days_since_prior_order),
+            uid.minDaysSince=min(days_since_prior_order),
+            uid.maxDaysSince=max(days_since_prior_order),
+            uid.sdDaysSince=sd(days_since_prior_order),
+            uid.accDaysSince = sum(days_since_prior_order),         
+            uid.aveHr=mean(as.numeric(order_hour_of_day)),
+            uid.sdHr=sd(as.numeric(order_hour_of_day)),
+            uid.aveDow=mean(as.numeric(order_dow)),
+            uid.sdDow=sd(as.numeric(order_dow))) %>%
+  filter(uid.numProducts >= 50)  # Filter for more than 50 to train better and reduce noise
+
+# glimpse(uid.fe)                        # 60000 users in total; 40574 users who purchased >= 50 
+anyNA(uid.fe)                            # No NA's
+uid.fe <- as.data.frame(uid.fe)          # Convert into a data table
+```
+
+## Feature Engineering: User Id - Department Distribution of Each User
+
+```{r}
+uid.depDistr <- order_products_sample60_prior %>%
+  left_join(products, by="product_id") %>%
+  left_join(departments, by="department_id") %>%
+  filter(user_id %in% uid.fe$user_id) %>%
+  select(user_id, order_number, product_name, department) %>%
+  arrange(user_id, order_number, product_name) %>%
+  group_by(user_id) %>%
+  summarise(uid.produce_distr = as.numeric(format(round(sum(department=="produce")/n()*100,2), nsmall=2)),
+            uid.dairy_eggs_distr = as.numeric(format(round(sum(department=="dairy eggs")/n()*100,2), nsmall=2)),
+            uid.snacks_distr = as.numeric(format(round(sum(department=="snacks")/n()*100,2), nsmall=2)),
+            uid.beverages_distr = as.numeric(format(round(sum(department=="beverages")/n()*100,2), nsmall=2)),
+            uid.frozen_distr = as.numeric(format(round(sum(department=="frozen")/n()*100,2), nsmall=2)),
+            uid.pantry_distr = as.numeric(format(round(sum(department=="pantry")/n()*100,2), nsmall=2)),
+            uid.bakery_distr = as.numeric(format(round(sum(department=="bakery")/n()*100,2), nsmall=2)),
+            uid.deli_distr = as.numeric(format(round(sum(department=="deli")/n()*100,2), nsmall=2))) %>%
+  mutate_all(funs(replace(., is.na(.), 0)))
+
+anyNA(uid.depDistr)
+uid.depDistr <- as.data.frame(uid.depDistr)
+```
+
+## Feature Engineering: User Id - Combine All
+
+```{r}
+uid.fe <- uid.fe %>%
+  left_join(uid.depDistr, by="user_id")
+
+# glimpse(uid.fe)  # n = 40574; k = 22
+```
+
+```{r}
+rm(uid.depDistr)
+
+# save(uid.fe, file="../Source/uid.fe.Rda")
+```
+
+
+## Feature Engineering: Products
+
+Taken from `PredictiveDataPrep.R`
+
+```{r}
+product.fe <- order_products_sample60_prior %>% 
+  filter(user_id %in% uid.fe$user_id) %>%
+  arrange(user_id, order_number, product_id) %>%
+  group_by(user_id, product_id) %>%
+  mutate(product.numTimes = row_number()) # Ranking of product appearance within each `user_id`
+product.fe <- product.fe %>%
+  ungroup() %>%
+  group_by(product_id) %>%
+  summarise(product.orders = n(),
+            product.reorders = sum(reordered),
+            product.aveDaysSince = mean(days_since_prior_order),
+            product.numUsers1 = sum(product.numTimes == 1),        # Number of users that have ordered this product
+            product.numUsers2g = sum(product.numTimes == 2)) %>%   # Number of users that ordered this product more than once
+  mutate(product.userReordProb = product.numUsers2g / product.numUsers1,  # Number of users who reordered this product at least once
+         product.aveTimesOrdered = 1 + product.reorders / product.numUsers1, # Number of reorders out of all users who have ever ordered this product plus one !!!
+         product.reordOrdRatio = product.reorders / product.orders) %>%
+  select(-product.reorders, -product.numUsers1, -product.numUsers2g)
+# glimpse(product.fe)  # n = 47,155; k = 6
+# save(product.fe, file="../Source/product.fe.Rda")
+```
+
+
+## Feature Engineering: User-Products - Streak
+
+This feature keeps track of the number of consecutive orders before the current order for each product and each user. The intution behind this is that if a user has ordered a given product every order of their past `n` orders, then each increase in `n` will increase the liklihood of order.
+
+```{r}
+# user_product_streak <- order_products_sample60_prior %>%
+#   arrange(user_id, product_id, order_number) %>%
+#   select(user_id, order_number, product_id) %>%
+#   mutate(user_product.order_streak = if_else(lag(order_number) == order_number - 1 & lag(product_id) == product_id & lag(user_id) == user_id, 
+#                                              0, 1, 1)) %>%  # 1 when new 'streak group' begins, 0 when streak group continues
+#   group_by(cumsum(user_product.order_streak), user_id) %>% # Puts each member of streak group in same numeric group
+#   mutate(user_product.order_streak = row_number()) %>%
+#   ungroup() %>%
+#   group_by(user_id, product_id) %>%
+#   filter(order_number == max(order_number)) %>% # Only want the latest order for each product
+#   ungroup() %>%
+#   group_by(user_id) %>%
+#   mutate(user_product.order_streak = if_else(order_number == max(order_number), as.numeric(user_product.order_streak), 0, 0)) %>% 
+#   # streak is 0 if product latest order was not the users most recent order
+#   select(user_id, product_id, user_product.order_streak)
+# user_product_streak <- user_product_streak %>% 
+#   filter(user_id %in% uid.fe$user_id)
+# save(user_product_streak, file="../Source/user_product_streak.Rda")
+load("../Source/user_product_streak.Rda")
+# glimpse(user_product_streak)  # n = 3,495,029; k = 3
+```
+
+## Feature Engineering: User-Products - Other User-Product Features
+
+```{r}
+user_products <- order_products_sample60_prior %>% 
+  filter(user_id %in% uid.fe$user_id)%>%
+  group_by(user_id, product_id) %>% 
+  summarise(
+    user_product.orders = n(),
+    user_product.firstOrder = min(order_number),
+    user_product.lastOrder = max(order_number),
+    user_product.aveDaysSince = mean(days_since_prior_order)) %>%
+  left_join(user_product_streak, by=c("user_id", "product_id")) %>%
+  ungroup() 
+```
+
+```{r}
+rm(user_product_streak)
+
+# save(user_products, file="../Source/user_products.Rda")
+```
+
+```{r}
+# glimpse(user_products)   # n = 3,495,029; k = 7
+# glimpse(product.fe)      # n = 47,155; k = 7
+# glimpse(uid.fe)          # n = 40,574; k = 22
+# glimpse(order.depDistr)  # n = 831,771; k = 10
+```
+
+
+
+
+# Final Data
+
+## Final Data: Build Main Data Set
+
+```{r}
+memory.limit()
+memory.limit(size=60000)
+```
+
+Now we are going to join all of the feature tables and add some more features that are intertable-dependent.
+
+```{r}
+data <- user_products %>% 
+  inner_join(uid.fe, by = "user_id") %>%
+  inner_join(product.fe, by = "product_id") %>%
+  mutate(user_product.ordersSinceLastOrdered = uid.numOrders - user_product.lastOrder,
+         user_product.aveDaysSinceDifference = uid.aveDaysSince - user_product.aveDaysSince,
+         product.aveDaysSinceDifference = uid.aveDaysSince - product.aveDaysSince,
+         user_product.orderRate = user_product.orders / uid.numOrders,
+         user_product.orderRateSinceFirstOrdered = user_product.orders / (uid.numOrders - user_product.firstOrder + 1)) %>%
+  select(-user_product.lastOrder, -user_product.aveDaysSince, -user_product.firstOrder, -product.aveDaysSince, -uid.numOrders)
+```
+
+```{r}
+glimpse(data)
+```
+
+```{r}
+rm(product.fe, user_products)
+```
+
+
+## Final Data: Combine with Response Variable
+
+### Response Variable
+
+```{r}
+response <- order_products_sample60_train %>% 
+  filter(user_id %in% uid.fe$user_id) %>%
+  select(user_id, order_number, product_id, reordered) %>%
+  arrange(user_id, order_number, product_id) %>%
+  select(user_id, product_id, reordered)
+
+anyNA(response)
+length(unique(response$user_id))
+```
+
+### Combine Response Variable to `data`
+
+```{r}
+data_final <- data %>%
+  filter(user_id %in% response$user_id) %>%
+  left_join(response, by = c("user_id", "product_id")) %>%
+  mutate(reordered = ifelse(is.na(reordered), 0, reordered),
+         user_id = as.factor(user_id),
+         product_id = as.factor(product_id)) %>%
+  arrange(user_id, product_id) 
+```
+
+### Inspect `data_final`
+
+```{r}
+length(unique(data_final$user_id))  # n = 25814
+anyNA(data_final)
+# sapply(data_final, function(x) sum(is.na(x)))
+glimpse(data_final)  # n = 2224420; k = 34
+```
+
+Unique values. We see that `uid.minDaysSince` has only 1 level which is 0. Therefore, we remove this variable.
+```{r}
+sapply(data_final, function(x) length(unique(x)))
+data_final <- data_final %>% select(-uid.minDaysSince)
+```
+
+Around 10.3% of products get reordered out of all orders
+```{r}
+sum(data_final$reordered==1)/sum(data_final$reordered==0)
+```
+
+There are a total of 25814 users in `final_data`
+```{r}
+length(unique(data_final$user_id))
+```
+
+Out of these users, the average reorder rate is 11.3%, sd is 9.2%, maximum is 100%, minimum is 0%.
+```{r}
+uid.reordRatio <- data_final %>% 
+  group_by(user_id) %>%
+  summarise(reordOrdRatio = sum(reordered)/n()) %>%
+  arrange(desc(reordOrdRatio))
+
+mean(uid.reordRatio$reordOrdRatio)
+sd(uid.reordRatio$reordOrdRatio)
+max(uid.reordRatio$reordOrdRatio)
+min(uid.reordRatio$reordOrdRatio)
+rm(uid.reordRatio)
+```
+
+# Save `data_final`
+
+```{r}
+# save(data_final, file="../Source/data_final.Rda")
+```
+
+```{r}
+rm(data, departments, order_products_sample60_prior, order_products_sample60_train, products, response, uid.fe)
+```
+
+# Record
+
+In this document, I saved the following items:
+1. data_final
+2. order_products_sample60_prior
+3. order_products_sample60_train
+4. uid.fe
+5. product.fe
+6. user_product_streak
+7. user_products
