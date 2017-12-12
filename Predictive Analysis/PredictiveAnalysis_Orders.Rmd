@@ -69,14 +69,16 @@ The standard measurement of accuracy for binary classification is F-1 score. It 
 We define a function that takes the predictions and references as input, and returns the confusion matrix, precision, recall, and F-1 Score
 
 ```{r}
-accuracy.Test <- function(prediction,reference){
-  con <- confusionMatrix(prediction,reference)
-  matrix <- con$table
-  precision <- matrix[2,2]/sum(matrix[,2])
-  recall <- matrix[2,2]/sum(matrix[2,])
-  f1 <- 2*precision*recall/(precision+recall)
-  result=list(matrix=matrix,precision=precision,recall=recall,f1=f1)
-  return(result)
+# Testing function
+f1_test <- function (pred, ref,user_id) {
+  require(ModelMetrics)
+  dt <- tibble(user_id, pred, ref)
+  dt <- dt %>%
+    group_by(user_id)%>%
+    mutate(f1_score = f1Score(pred,ref))%>%
+    summarise(f1_score = mean(f1_score,na.rm=TRUE))
+  f1_mean <- mean(dt$f1_score,na.rm=TRUE)
+  return (list(metric = "Mean F1", value = f1_mean))
 }
 ```
 
@@ -87,7 +89,7 @@ We are going to want to measure the performance of our prediction against some n
 Below we see how such a model performs.
 ```{r}
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-accuracy.Test(nullPredict,test$reordered)
+f1_test(nullPredict,test$reordered)
 ```
 
 ## Gradient Boosted Tree Model 
@@ -162,9 +164,9 @@ We can see from this which features are the most important.
 
 ```{r}
 xgbpred <- predict(model, testMatrix)
-xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+xgbpred <- ifelse(xgbpred > 0.2, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
 confusionMatrix(xgbpred, test$reordered)
-accuracy.Test(xgbpred, test$reordered)
+f1_test(xgbpred, test$reordered,test$user_id)
 ```
 
 

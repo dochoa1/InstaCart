@@ -19,7 +19,7 @@ orders_sample <-
   subset(orders, user_id %in% random_users)
 
 order_products_sample <-
-  subset(order_products, order_id %in% unique(orders_sample40$order_id))
+  subset(order_products, order_id %in% unique(orders_sample$order_id))
 
 # Before sampling:
 #   orders - 3.4 million rows  

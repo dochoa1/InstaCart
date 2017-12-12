@@ -8,14 +8,15 @@ library(Ckmeans.1d.dp)  # Used for XGBoost visualization
 library(DiagrammeR)  # Used for XGBoost visualization
 
 # Testing function
-accuracy.Test <- function(prediction,reference){
-  con <- confusionMatrix(prediction,reference)
-  matrix <- con$table
-  precision <- matrix[2,2]/sum(matrix[,2])
-  recall <- matrix[2,2]/sum(matrix[2,])
-  f1 <- 2*precision*recall/(precision+recall)
-  result=list(matrix=matrix,precision=precision,recall=recall,f1=f1)
-  return(result)
+f1_test <- function (pred, ref,user_id) {
+  require(ModelMetrics)
+  dt <- tibble(user_id, pred, ref)
+  dt <- dt %>%
+    group_by(user_id)%>%
+    mutate(f1_score = f1Score(pred,ref))%>%
+    summarise(f1_score = mean(f1_score))
+  f1_mean <- mean(dt$f1_score)
+  return (list(metric = "Mean F1", value = f1_mean))
 }
 
 #
@@ -49,7 +50,7 @@ testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
 
 # Null model
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-accuracy.Test(nullPredict,test$reordered)
+accuracy.Test(nullPredict,test$reordered,test$user_id)
 
 
 # Parameters setting
@@ -58,7 +59,6 @@ params <- list("objective" = "binary:logistic",
                "eta" = 0.3,
                "min_child_weight" = 1,
                "subsample" = 0.8)
-
 # Cross Validation
 cv <- xgb.cv(data = trainingMatrix, nfold=5, param=params, nrounds=80, early_stopping_rounds=10, verbose=TRUE)
 
