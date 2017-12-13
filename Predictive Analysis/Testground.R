@@ -1,5 +1,7 @@
 # This is Hoang Anh testing playgrounds for experimenting different features
 
+setwd("D:/Macalester/ProjDS/InstaCart/Source")
+
 # Library
 library(tidyverse)
 library(xgboost)
@@ -8,15 +10,15 @@ library(Ckmeans.1d.dp)  # Used for XGBoost visualization
 library(DiagrammeR)  # Used for XGBoost visualization
 
 # Testing function
-f1_test <- function (pred, ref,user_id) {
+f1_test <- function (pred, ref, user_id) {
   require(ModelMetrics)
   dt <- tibble(user_id, pred, ref)
   dt <- dt %>%
     group_by(user_id)%>%
     mutate(f1_score = f1Score(pred,ref))%>%
-    summarise(f1_score = mean(f1_score))
-  f1_mean <- mean(dt$f1_score)
-  return (list(metric = "Mean F1", value = f1_mean))
+    summarise(f1_score = mean(f1_score,na.rm=TRUE))
+  f1_mean <- mean(dt$f1_score,na.rm=TRUE)
+  return (f1_mean)
 }
 
 #
@@ -26,7 +28,7 @@ trainDF <- read_csv("../Source/trainingData.csv")
 products <- read_csv("../Source/products.csv")  # Used to provide product names (hasn't been incorporated yet)
 
 # Separate Test from Train
-set.seed(567)
+set.seed(567) # Used for reproducability of results
 
 inTrain <- sample_frac(data.frame(unique(trainDF$order_id)), 0.7)
 
@@ -40,17 +42,17 @@ rm(inTrain)
 
 # Matrix setting
 trainIndependents <- train %>% 
-  select(-reordered)
+  select(-reordered, -product_id, -order_id, -user_id)
 
 testIndependents <- test %>% 
-  select(-reordered)
+  select(-reordered,  -product_id, -order_id, -user_id)
 
 trainingMatrix <- xgb.DMatrix(as.matrix(trainIndependents), label = train$reordered)
 testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
 
 # Null model
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-accuracy.Test(nullPredict,test$reordered,test$user_id)
+f1_test(nullPredict,test$reordered,test$user_id)
 
 
 # Parameters setting
@@ -67,11 +69,24 @@ model <- xgb.train(data = trainingMatrix, param=params, nrounds=40, verbose=FALS
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
 xgb.ggplot.importance(importance)
 
+# Finding threshold
+xgbpred_train <- predict(model,trainingMatrix)
+kk=seq(0.01,0.99,length=100)
+threshold = c()
+for (k in kk){
+  xgbpred_k <- ifelse(xgbpred_train > k, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+  threshold <- c(threshold,f1_test(xgbpred_k,train$reordered,train$user_id))
+}
+plot(kk,threshold)
+which.max(threshold)
+cutoff <- kk[23]
+
+
+
 # Prediction 
 xgbpred <- predict(model, testMatrix)
-xgbpred <- ifelse(xgbpred > 0.1, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-accuracy.Test(xgbpred,test$reordered)
-
+xgbpred <- ifelse(xgbpred > cutoff, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+f1_test(xgbpred,test$reordered,test$user_id)
 
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
 accuracy.Test(nullPredict,test$reordered)

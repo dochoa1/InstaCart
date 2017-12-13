@@ -24,6 +24,7 @@ library(xgboost)
 library(caret)  # Used for confusion matrix
 library(Ckmeans.1d.dp)  # Used for XGBoost visualization
 library(DiagrammeR)  # Used for XGBoost visualization
+library(ggplot2)
 ```
 
 # Reading In The Data
@@ -78,7 +79,7 @@ f1_test <- function (pred, ref,user_id) {
     mutate(f1_score = f1Score(pred,ref))%>%
     summarise(f1_score = mean(f1_score,na.rm=TRUE))
   f1_mean <- mean(dt$f1_score,na.rm=TRUE)
-  return (list(metric = "Mean F1", value = f1_mean))
+  return (f1_mean)
 }
 ```
 
@@ -89,10 +90,21 @@ We are going to want to measure the performance of our prediction against some n
 Below we see how such a model performs.
 ```{r}
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
-f1_test(nullPredict,test$reordered)
+f1_test(nullPredict,test$reordered,test$user_id)
 ```
 
 ## Gradient Boosted Tree Model 
+
+```{}
+# Evaluation function
+xgb_eval_f1 <- function (yhat, dtrain) {
+  require(ModelMetrics)
+  y = getinfo(dtrain, "label")
+  dt <- data.table(user_id=train[user_id %in% val_users, user_id], purch=y, pred=yhat)
+  f1 <- mean(dt[,.(f1score=f1Score(purch, pred, cutoff=0.249)), by=user_id]$f1score)
+  return (list(metric = "f1", value = f1))
+}
+```
 
 ```{r}
 trainingMatrix <- xgb.DMatrix(as.matrix(trainIndependents), label = train$reordered)
@@ -102,17 +114,17 @@ testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
 ## Parameter Tuning
 
 ```{r}
-params <- list("objective" = "binary:logistic",
-               "max_depth" = 6,
-               "eta" = 0.1,
-               "min_child_weight" = 10,
-               "subsample" = 0.8)
+params <- list(objective = "binary:logistic",
+               max_depth = 6,
+               eta = 0.1,
+               min_child_weight = 10,
+               subsample = 0.8)
 ```
 
 
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
 ```{r eval=FALSE}
-cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
+#cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
 ```
 
 Now to plot the error
@@ -153,7 +165,6 @@ gridModel$bestTune
 ```
 
 ## Predictions
-
 ```{r}
 model <- xgb.train(data = trainingMatrix, param=params, nrounds=200, verbose=FALSE)
 importance <- xgb.importance(colnames(trainingMatrix), model = model)
@@ -162,13 +173,30 @@ xgb.ggplot.importance(importance)
 
 We can see from this which features are the most important.
 
+# Finding Threshold for Classification
+
 ```{r}
-xgbpred <- predict(model, testMatrix)
-xgbpred <- ifelse(xgbpred > 0.2, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
-confusionMatrix(xgbpred, test$reordered)
-f1_test(xgbpred, test$reordered,test$user_id)
+# Finding threshold
+xgbpred_train <- predict(model,trainingMatrix)
+kk=seq(0.01,0.99,length=100)
+threshold = c()
+for (k in kk){
+  xgbpred_k <- ifelse(xgbpred_train > k, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+  threshold <- c(threshold,f1_test(xgbpred_k,train$reordered,train$user_id))
+}
+ggplot()+
+  geom_point(aes(kk,threshold))+
+  labs(title="Errors with Different Threshold",ylab="Mean F1 Score",xlab="Threshold")
+cutoff <- kk[which.max(threshold)]
 ```
 
+```{r}
+xgbpred <- predict(model, testMatrix)
+xgbpred <- ifelse(xgbpred > cutoff, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+confusionMatrix(xgbpred, test$reordered)
+message("F1 Score")
+f1_test(xgbpred, test$reordered,test$user_id)
+```
 
 ## Prediction Comparisons and Visualizations
 
