@@ -124,7 +124,7 @@ params <- list(objective = "binary:logistic",
 
 Now to use a 4-fold cross validation to narrow in on the number of iterations to minimize error rate.
 ```{r eval=FALSE}
-#cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
+cv <- xgb.cv(data = trainingMatrix, nfold=4, param=params, nrounds=200, early_stopping_rounds=20, print_every_n = 10)
 ```
 
 Now to plot the error
@@ -175,24 +175,26 @@ We can see from this which features are the most important.
 
 # Finding Threshold for Classification
 
-```{r}
+```{r, warning=FALSE}
 # Finding threshold
 xgbpred_train <- predict(model,trainingMatrix)
 kk=seq(0.01,0.99,length=100)
 threshold = c()
 for (k in kk){
-  xgbpred_k <- ifelse(xgbpred_train > k, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+  xgbpred_k <- ifelse(xgbpred_train > k, 1, 0)
   threshold <- c(threshold,f1_test(xgbpred_k,train$reordered,train$user_id))
 }
-ggplot()+
-  geom_point(aes(kk,threshold))+
-  labs(title="Errors with Different Threshold",ylab="Mean F1 Score",xlab="Threshold")
 cutoff <- kk[which.max(threshold)]
+ggplot() + geom_point(aes(kk,threshold)) + geom_point(aes(x=cutoff,y=max(threshold, na.rm = TRUE)), color="red") + labs(title="Errors with Different Threshold", y="Mean F1 Score",x="Threshold")
+```
+
+```{r, warning=FALSE}
+ggplot() + geom_point(aes(kk,threshold)) + geom_point(aes(x=cutoff,y=max(threshold, na.rm = TRUE)), color="red") + labs(title="Errors with Different Threshold", y="Mean F1 Score",x="Threshold")
 ```
 
 ```{r}
 xgbpred <- predict(model, testMatrix)
-xgbpred <- ifelse(xgbpred > cutoff, 1, 0) # 0.1 is threshold I came up with after messing around, experiment with it
+xgbpred <- ifelse(xgbpred > cutoff, 1, 0) 
 confusionMatrix(xgbpred, test$reordered)
 message("F1 Score")
 f1_test(xgbpred, test$reordered,test$user_id)
