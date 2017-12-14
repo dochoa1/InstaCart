@@ -53,7 +53,7 @@ testMatrix <- xgb.DMatrix(as.matrix(testIndependents), label = test$reordered)
 # Null model
 nullPredict <- ifelse(test$user_product.order_streak > 0, 1, 0)
 f1_test(nullPredict,test$reordered,test$user_id)
-
+confusionMatrix(nullPredict,test$reordered)
 
 # Parameters setting
 params <- list("objective" = "binary:logistic",
