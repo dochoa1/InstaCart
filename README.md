@@ -16,6 +16,9 @@ If you would like to see predictions made by our models on the data then you wil
 
 After the testing and training datasets have been created then you can run the gradient boosting model on the data and analyze its results at `/PredictiveAnalysis/PredictiveAnalysis_Orders.Rmd`.
 
+# Run the deep learning model
+Download Anaconda and Jupyter notebook. Packages needed are sklearn, pandas, numpy and keras. Data used are `/Source/trainingData.csv` and `/Source/testingData.csv`. The model takes about two hours to run. The training data is divided into 80% train and 20% test. After building the model on the training data, it is used to make predictions on the testing data. 
+
 # Citation
 
 The data used in this project was made publicly available courtesy of InstaCart.
