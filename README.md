@@ -19,6 +19,17 @@ After the testing and training datasets have been created then you can run the g
 # Run the deep learning model
 Download Anaconda and Jupyter notebook. Packages needed are sklearn, pandas, numpy and keras. Data used are `/Source/trainingData.csv` and `/Source/testingData.csv`. The model takes about two hours to run. The training data is divided into 80% train and 20% test. After building the model on the training data, it is used to make predictions on the testing data. 
 
+# Run the logistic regression model
+The file titled `Logit_originalDf.R` runs logistic regression model on the above-mentioned data frame. The rest of the logit files run logit on wrangled data sets. The first wrangling of the original data is a data frame titled `data_final` which can be found in the file titled `PredictiveDataPrep_alt` in the `DataPrep` folder. Other subsets of  `data_final` comes from the file `PredictiveDataPrep_sample`. The data frames used in the analysis among the subset data are `df.ordProd` which is a filtered version of `data_final` containing users who have ordered 15 or more times and purchased at least 100 products. `df.ordProd900` is a sample of 900 users from `df.ordProd`. Both `PredictiveDataPrep_alt` and `PredictiveDataPrep_sample` contain save codes that will save the data to the `Source` folder.
+
+Some of the data frames under `PredictiveDataPrep_sample` come from clustering files, so run the clustering files first on logit analysis that has been done on clustered `user_id` or `product_name`. The clustered data frames the logit analysis uses are: `clust3_Uid`, `clust4_Uid`, and `clust3_Prod`. 
+
+The data is divided into 70% train and 30% test. As with other models, the predictions from the training data are made on the testing data. 
+
+# Run the clusters
+All cluster files that begin with `PredictiveAnalysis_Clusterby` require `df.ordProd900` in the file `PredictiveDataPrep_sample` under `DataPrep` folder. These files contain save code that will save the data to the `Source` folder.
+
+
 # Citation
 
 The data used in this project was made publicly available courtesy of InstaCart.
