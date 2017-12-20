@@ -205,7 +205,7 @@ f1_comp_test <- function(model, cutoff){
 ## Results
 
 ```{r}
-f1_comp_test(model3, 0.34)
+f1_comp_test(model3, 0.43)
 ```
 
 
@@ -225,7 +225,7 @@ ggplot(test, aes(x=pred_logit_pre, y=reordered)) + geom_point() +
 ## ROC
 
 ```{r warning = FALSE}
-pred_logit <- ifelse(pred_logit_pre > 0.34, 1, 0)
+pred_logit <- ifelse(pred_logit_pre > 0.43, 1, 0)
 roc(test$reordered, pred_logit, plot=TRUE)
 ```
 
