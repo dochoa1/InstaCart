@@ -3,7 +3,7 @@ title: "InstaCart Predictive Data Prep: Alternative"
 author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
 date: "December 9, 2017"
 knit: (function(inputFile, encoding) {
-  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveDataPrep_HTML_Output") })
 output:
   bookdown::tufte_html2:
     number_sections: no
@@ -26,7 +26,7 @@ options(htmltools.dir.version = FALSE)
 ```
 
 
-
+* This file is not meant to be knitted because it's a data prep file. Also, it exceeds the size limit on my computer.
 
 
 # Original Data Sets (`orders` and `order_products`)
@@ -73,7 +73,7 @@ order_products_sample60_prior <-
 
 rm(orders_sample60_prior)
 
-# save(order_products_sample60_prior, file = "../Source/order_products_sample60_prior.Rda")
+save(order_products_sample60_prior, file = "../Source/order_products_sample60_prior.Rda")
 ```
 
 ## Train Dataset from `orders` and `order_products`
@@ -91,7 +91,7 @@ order_products_sample60_train <-
 
 rm(orders_sample60_train)
 
-# save(order_products_sample60_train, file = "../Source/order_products_sample60_train.Rda")
+save(order_products_sample60_train, file = "../Source/order_products_sample60_train.Rda")
 ```
 
 ```{r}
@@ -165,8 +165,6 @@ uid.fe <- uid.fe %>%
 
 ```{r}
 rm(uid.depDistr)
-
-# save(uid.fe, file="../Source/uid.fe.Rda")
 ```
 
 
@@ -192,8 +190,7 @@ product.fe <- product.fe %>%
          product.aveTimesOrdered = 1 + product.reorders / product.numUsers1, # Number of reorders out of all users who have ever ordered this product plus one !!!
          product.reordOrdRatio = product.reorders / product.orders) %>%
   select(-product.reorders, -product.numUsers1, -product.numUsers2g)
-# glimpse(product.fe)  # n = 47,155; k = 6
-# save(product.fe, file="../Source/product.fe.Rda")
+# glimpse(product.fe)  # n = 47155; k = 6
 ```
 
 
@@ -202,26 +199,25 @@ product.fe <- product.fe %>%
 This feature keeps track of the number of consecutive orders before the current order for each product and each user. The intution behind this is that if a user has ordered a given product every order of their past `n` orders, then each increase in `n` will increase the liklihood of order.
 
 ```{r}
-# user_product_streak <- order_products_sample60_prior %>%
-#   arrange(user_id, product_id, order_number) %>%
-#   select(user_id, order_number, product_id) %>%
-#   mutate(user_product.order_streak = if_else(lag(order_number) == order_number - 1 & lag(product_id) == product_id & lag(user_id) == user_id, 
-#                                              0, 1, 1)) %>%  # 1 when new 'streak group' begins, 0 when streak group continues
-#   group_by(cumsum(user_product.order_streak), user_id) %>% # Puts each member of streak group in same numeric group
-#   mutate(user_product.order_streak = row_number()) %>%
-#   ungroup() %>%
-#   group_by(user_id, product_id) %>%
-#   filter(order_number == max(order_number)) %>% # Only want the latest order for each product
-#   ungroup() %>%
-#   group_by(user_id) %>%
-#   mutate(user_product.order_streak = if_else(order_number == max(order_number), as.numeric(user_product.order_streak), 0, 0)) %>% 
-#   # streak is 0 if product latest order was not the users most recent order
-#   select(user_id, product_id, user_product.order_streak)
-# user_product_streak <- user_product_streak %>% 
-#   filter(user_id %in% uid.fe$user_id)
-# save(user_product_streak, file="../Source/user_product_streak.Rda")
-load("../Source/user_product_streak.Rda")
-# glimpse(user_product_streak)  # n = 3,495,029; k = 3
+user_product_streak <- order_products_sample60_prior %>%
+  arrange(user_id, product_id, order_number) %>%
+  select(user_id, order_number, product_id) %>%
+  mutate(user_product.order_streak = if_else(lag(order_number) == order_number - 1 & lag(product_id) == product_id & lag(user_id) == user_id,
+                                             0, 1, 1)) %>%  # 1 when new 'streak group' begins, 0 when streak group continues
+  group_by(cumsum(user_product.order_streak), user_id) %>% # Puts each member of streak group in same numeric group
+  mutate(user_product.order_streak = row_number()) %>%
+  ungroup() %>%
+  group_by(user_id, product_id) %>%
+  filter(order_number == max(order_number)) %>% # Only want the latest order for each product
+  ungroup() %>%
+  group_by(user_id) %>%
+  mutate(user_product.order_streak = if_else(order_number == max(order_number), as.numeric(user_product.order_streak), 0, 0)) %>%
+  # streak is 0 if product latest order was not the users most recent order
+  select(user_id, product_id, user_product.order_streak)
+user_product_streak <- user_product_streak %>%
+  filter(user_id %in% uid.fe$user_id)
+
+# glimpse(user_product_streak)  # n = 3495029; k = 3
 ```
 
 ## Feature Engineering: User-Products - Other User-Product Features
@@ -241,9 +237,9 @@ user_products <- order_products_sample60_prior %>%
 
 ```{r}
 rm(user_product_streak)
-
-# save(user_products, file="../Source/user_products.Rda")
 ```
+
+## For Record
 
 ```{r}
 # glimpse(user_products)   # n = 3,495,029; k = 7
@@ -356,8 +352,10 @@ rm(uid.reordRatio)
 # Save `data_final`
 
 ```{r}
-# save(data_final, file="../Source/data_final.Rda")
+save(data_final, file="../Source/data_final.Rda")
 ```
+
+# Clean
 
 ```{r}
 rm(data, departments, order_products_sample60_prior, order_products_sample60_train, products, response, uid.fe)
@@ -369,7 +367,3 @@ In this document, I saved the following items:
 1. data_final
 2. order_products_sample60_prior
 3. order_products_sample60_train
-4. uid.fe
-5. product.fe
-6. user_product_streak
-7. user_products

@@ -1,0 +1,285 @@
+---
+title: "InstaCart Predictive Analysis: Logit Using `data_final`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "December 11, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(caret)  # Used for confusion matrix
+library(ggthemes)
+library(data.table)
+library(tidyverse)
+library(pROC)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+
+
+# Prepare the Data
+
+## Load the Data
+
+```{r message=FALSE, warning=FALSE, cache=FALSE}
+load("../Source/data_final.Rda")
+```
+
+```{r}
+data_final <- data_final %>% 
+  mutate(user_id = as.numeric(user_id),
+         product_id = as.numeric(product_id))
+```
+
+
+## Divide Train & Test Data
+
+```{r cache.lazy=FALSE}
+samplesize <- floor(0.70 * nrow(data_final))
+set.seed(098)
+all_indices = c(1:nrow(data_final))
+train_indices = sample(seq_len(nrow(data_final)), size = samplesize)
+test_indices = setdiff(all_indices, train_indices)
+all( ! test_indices %in% train_indices)
+
+# Train_data
+train = data_final[train_indices, ]
+train <- train %>% arrange(user_id, product_id)
+
+# Test_data
+test = data_final[test_indices, ] 
+test <- test %>% arrange(user_id, product_id)
+
+rm(samplesize, all_indices, train_indices, test_indices, data_final)
+```
+
+## Expand Memory Storage
+
+```{r}
+memory.limit()
+memory.limit(size=60000)
+```
+
+
+
+
+
+# Predictive Analysis: Logistic Regression
+
+## Full Model 
+
+Fit the model for binomial regression.
+```{r}
+modelf <- glm(reordered ~ . - `user_id` - `product_id`, family = binomial(link = 'logit'), data = train)
+```
+
+Obtain the results of our model:
+```{r}
+summary(modelf)
+```
+
+We can see that `uid.reorderProducts`, `uid.maxDaysSince`, `uid.aveDow`, `uid.sdDow`, `uid.pantry_distr` & `uid.bakery_distr` are not statistically significant. On the other hand, most other variables are strongly statistically significant (***), while some other variables such as `uid.sdHr`, `uid.snacks_distr` & `uid.frozen_distr` are on the boarderline of statistical significance (*). The variables with the strongest statistical significance (***) or those with the lowest p-values have a strong association with reorder probability.
+
+
+## Fewer Variables
+
+Fit the model for binomial regression. We remove these statistically insignificant variables this time.
+
+`uid.reorderProducts`, `uid.maxDaysSince`, `uid.aveDow`, `uid.sdDow`, `uid.pantry_distr` & `uid.bakery_distr`
+```{r}
+model2 <- glm(reordered ~ . - `user_id` - `product_id` - `uid.reorderProducts` - `uid.maxDaysSince` - `uid.aveDow` - `uid.sdDow` - `uid.pantry_distr` - `uid.bakery_distr`, family = binomial(link = 'logit'), data = train)
+```
+
+Obtain the results of our model:
+```{r}
+summary(model2)
+```
+
+
+## Even Fewer Variables
+
+Remove variables with one star from `model2`
+
+`uid.snacks_distr` & `uid.frozen_distr`
+```{r}
+model3 <- glm(reordered ~ . - `user_id` - `product_id` - `uid.reorderProducts` - `uid.maxDaysSince` - `uid.aveDow` - `uid.sdDow` - `uid.pantry_distr` - `uid.bakery_distr` - `uid.snacks_distr` - `uid.frozen_distr`, family = binomial(link = 'logit'), data = train)
+```
+
+Obtain the results of our model:
+```{r}
+summary(model3)
+```
+
+
+## Compare Models
+
+```{r}
+anova(modelf, model2, test="Chisq")
+anova(modelf, model3, test="Chisq")
+anova(model2, model3, test="Chisq")
+```
+
+It means that the fitted model "modelf" is not significantly different from either "model2" or "model3". However, "model3" is significantly different form "model2" at p = 0.1. 
+
+
+## Testing Function
+
+```{r}
+accuracy_test <- function(pred_mod) {
+  
+  # confusion matrix, precision, recall
+  cmt <- confusionMatrix(pred_mod, test$reordered)
+  recall <- cmt[2,2]/sum(cmt[2,])
+  precision <- cmt[2,2]/sum(cmt[,2])
+  specificity <- cmt[1,1]/sum(cmt[1,])
+  accuracy <- (cmt[2,2]+cmt[1,1])/(cmt[1,1]+cmt[2,2]+cmt[2,1]+cmt[1,2])
+  
+  # print output
+  result=list(confMatrTable = unlist(cmt), precision=precision, recall=recall,
+              specificity=specificity, accuracy=accuracy)
+  
+  return(result)
+}
+  
+  
+  
+f1_test <- function (pred, ref,user_id) {
+  require(ModelMetrics)
+  dt <- tibble(user_id, pred, ref)
+  dt <- dt %>%
+    group_by(user_id)%>%
+    mutate(f1_score = f1Score(pred,ref))%>%
+    summarise(f1_score = mean(f1_score,na.rm=TRUE))
+  f1_mean <- mean(dt$f1_score,na.rm=TRUE)
+  return (f1_mean)
+}
+
+
+
+f1_comp_test <- function(model, cutoff){
+
+  # prediction for our model
+  pred_mod_tem <- predict(model, newdata = test, type = 'response')
+  pred_mod <- ifelse(pred_mod_tem > cutoff, 1, 0)
+  pred_f1 <- f1_test(pred_mod, test$reordered, test$user_id)
+  
+  # prediction for null model
+  pred_null <- ifelse(test$user_product.order_streak > 0, 1, 0)
+  null_f1 <- f1_test(pred_null, test$reordered, test$user_id)
+  
+  # comparison to null model
+  diff_raw <- pred_f1-null_f1
+  diff_perc <- diff_raw/null_f1
+  
+  
+  acc_output <- accuracy_test(pred_mod)
+  
+  # print output
+  result1=list(pred_f1=pred_f1)
+  result2=list(null_f1=null_f1)
+  result3=list(diff_raw=diff_raw, diff_perc=diff_perc)
+  result4=acc_output
+  
+  return(c(result1, result2, result3, result4))
+}
+```
+
+
+## Results
+
+```{r}
+f1_comp_test(model3, 0.34)
+```
+
+
+## Plot GLM
+
+```{r warning = FALSE}
+pred_logit_pre <- predict(model3, newdata = test, type = 'response')
+
+ggplot(test, aes(x=pred_logit_pre, y=reordered)) + geom_point() +
+  stat_smooth(method="glm", family="binomial", se=TRUE) +
+  labs(x="Prediction", y="Actual",
+       title="Logistic Regression of Prediction vs. Actual Reordered",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+
+## ROC
+
+```{r warning = FALSE}
+pred_logit <- ifelse(pred_logit_pre > 0.34, 1, 0)
+roc(test$reordered, pred_logit, plot=TRUE)
+```
+
+
+
+
+## Below codes are included for exploration (for fun)
+
+## Comparison between Linear and Logistic Model - included for coolness in features
+
+```{r}
+pred_logit_linkscores <- predict(model3, newdata = test, type = 'link')
+pred_logit_respscores <- predict(model3, newdata = test, type = 'response')
+
+score_data <- data.frame(link=pred_logit_linkscores, 
+                         response=pred_logit_respscores,
+                         reordered=test$reordered,
+                         stringsAsFactors=FALSE)
+
+score_data %>% 
+  ggplot(aes(x=link, y=response, col=reordered)) + 
+  # scale_color_manual(values=c("black", "red")) + 
+  geom_point() + 
+  geom_rug() + 
+  ggtitle("Both Link and Response Scores")
+
+```
+
+
+```{r}
+summary_model3 <- summary(model3)
+list( summary_model3$coefficient, 
+      round( 1 - ( summary_model3$deviance / summary_model3$null.deviance ), 2 ) )
+```
+
+A fast check on all the p-values of the model indicates significance, meaning that our model is a legitimate one. A pseudo R square of 0.22 tells that only 22 percent of the variance is explained. In other words, it is telling us that the model isn't powerful enough to predict reorder binary outcomes with high reliability. Since this is more of a dataset problem ( suggests collecting other variables to include to the dataset ) and there's not much we can do about it at this stage, so we'll simply move on to the next part where we'll start looking at the predictions made by the model.
+
+
+Given that our model's final objective is to classify new instances into one of two categories, we will want the model to give high scores to positive instances ( 1: reordered ) and low scores ( 0 : not reordered ) otherwise. Thus for a ideal double density plot you want the distribution of scores to be separated, with the score of the negative instances to be on the left and the score of the positive instance to be on the right.
+
+In the current case, both distributions are very skewed to the left and are on top of each other. Not only is the predicted probability for the negative outcomes low, but the probability for the positive outcomes are also way lower than it should be. The reason for this is because our dataset only consists of only a few positive instances ( reordered ). Thus our predicted scores sort of gets pulled towards a lower number because of the majority of the data being negative instances.
+
+```{r}
+# prediction
+train$pred_logit <- predict( model3, newdata = train, type = "response" )
+test$pred_logit  <- predict( model3, newdata = test , type = "response" )
+
+# distribution of the prediction score grouped by known outcome
+ggplot( train, aes( pred_logit, color = as.factor(reordered) ) ) + 
+geom_density( size = 1 ) +
+ggtitle( "Predicted Score of the Train Set" ) + 
+scale_color_economist( name = "data", labels = c( "negative", "positive" ) ) + 
+theme_economist()
+```
+
+
+

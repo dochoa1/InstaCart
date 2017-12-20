@@ -1,0 +1,327 @@
+---
+title: "InstaCart Predictive Analysis: Hierarchical Clustering and K-Means by `user_id`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "November 25, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(ape)                #to make hierarchical clusters
+library(mclust)             #for k-means clustering
+library(BBmisc)             #for data normalization
+library(dplyr)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+# Load the data
+
+```{r message=FALSE, warning=FALSE, cache=FALSE}
+orders <- read_csv("../Source/orders_sample.csv")
+order_products <- read_csv("../Source/order_products_sample.csv")
+products <- read_csv("../Source/products.csv")
+departments <- read_csv("../Source/departments.csv")
+aisles <- read_csv("../Source/aisles.csv")
+```
+
+```{r}
+names(orders)
+names(order_products)
+names(products)
+names(departments)
+names(aisles)
+```
+
+
+
+
+
+# Prepare the data: by `user_id` without `order_chron`
+
+## Filter users who ordered more than 50 products
+
+Note: The `user_id` column is replaced as a rowname(df) in all data tables
+
+```{r}
+uid_train_nochron <- orders %>%
+  left_join(order_products, by="order_id") %>%
+  left_join(products, by="product_id") %>%
+  filter(eval_set == "prior") %>%
+  mutate(user_id = as.factor(user_id),
+         days_since_prior_order = ifelse(is.na(days_since_prior_order), 0, days_since_prior_order)) %>%
+  select(user_id, order_number, product_name, reordered, days_since_prior_order,
+         order_dow, order_hour_of_day, add_to_cart_order, order_id) %>%
+  arrange(user_id, order_number)
+
+uid_train_nochron <- uid_train_nochron %>%
+  group_by(user_id) %>%
+  summarize(num_products=n(), # total number of products bought; repetition not overwritten
+            reorder_products=sum(reordered),
+            reord_ord_ratio=reorder_products/num_products,
+            days_since=mean(days_since_prior_order),
+            min_days_since=min(days_since_prior_order),
+            max_days_since=max(days_since_prior_order),
+            sd_days_since=sd(days_since_prior_order),
+            ave_hr=mean(as.numeric(order_hour_of_day)),
+            sd_hr=sd(as.numeric(order_hour_of_day)),
+            ave_dow=mean(as.numeric(as.factor(order_dow)) ,
+            sd_dow=sd(as.numeric(as.factor(order_dow))))) %>%
+  filter(num_products >= 50) 
+temp <- uid_train_nochron
+uid_train_nochron <- as.data.frame(uid_train_nochron)
+rownames(uid_train_nochron) <- uid_train_nochron$user_id
+uid_train_nochron[,1] <- NULL
+
+head(uid_train_nochron)
+glimpse(uid_train_nochron)         # 38,996
+anyNA(uid_train_nochron)           # FALSE
+```
+
+## Filter users who ordered more than 100 products
+
+```{r}
+uid_train_nochron_100 <- temp %>%
+  filter(num_products >= 100)
+uid_train_nochron_100 <- as.data.frame(uid_train_nochron_100)
+rownames(uid_train_nochron_100) <- uid_train_nochron_100$user_id
+uid_train_nochron_100[,1] <- NULL
+save(uid_train_nochron_100, file="../Source/uid_priorsamp_nochron_100.Rda")
+
+head(uid_train_nochron_100)
+glimpse(uid_train_nochron_100)     # 17,512
+anyNA(uid_train_nochron_100)       # FALSE
+```
+
+## Filter users who ordered more than 200 products
+
+```{r}
+uid_train_nochron_200 <- temp %>%
+  filter(num_products >= 200)
+uid_train_nochron_200 <- as.data.frame(uid_train_nochron_200)
+rownames(uid_train_nochron_200) <- uid_train_nochron_200$user_id
+uid_train_nochron_200[,1] <- NULL
+save(uid_train_nochron_200, file="../Source/uid_priorsamp_nochron_200.Rda")
+
+head(uid_train_nochron_200)
+glimpse(uid_train_nochron_200)     # 9,315
+anyNA(uid_train_nochron_200)       # FALSE
+```
+
+
+
+
+
+# Inspect the data table `uid_train_nochron_200`
+
+## Take a glimpse of `uid_train_nochron_200`
+
+```{r}
+glimpse(uid_train_nochron_200)
+```
+
+## Check if any variable has missing values
+
+```{r}
+sum(is.na(uid_train_nochron_200$num_products))
+sum(is.na(uid_train_nochron_200$reorder_products))
+sum(is.na(uid_train_nochron_200$days_since))
+```
+
+## Examine some key statistics of the variables
+
+### `num_products` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$num_products)
+max(uid_train_nochron_200$num_products)
+mean(uid_train_nochron_200$num_products)
+sd(uid_train_nochron_200$num_products)
+# hist(uid_train_nochron_200$num_products, main=paste("Histogram of", colnames(uid_train_nochron_200)[1]))
+```
+
+### `reorder_products` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$reorder_products)
+max(uid_train_nochron_200$reorder_products)
+mean(uid_train_nochron_200$reorder_products)
+sd(uid_train_nochron_200$reorder_products)
+# hist(uid_train_nochron_200$reorder_products, main=paste("Histogram of", colnames(uid_train_nochron_200)[2]))
+```
+
+### `reord_ord_ratio` across `user_id`
+
+```{r}
+mean(uid_train_nochron_200$reord_ord_ratio)
+sd(uid_train_nochron_200$reord_ord_ratio)
+```
+
+### `days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$days_since)
+max(uid_train_nochron_200$days_since)
+mean(uid_train_nochron_200$days_since)
+sd(uid_train_nochron_200$days_since)
+```
+
+### `min_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$min_days_since)
+max(uid_train_nochron_200$min_days_since)
+mean(uid_train_nochron_200$min_days_since)
+sd(uid_train_nochron_200$min_days_since)
+```
+
+### `max_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$max_days_since)
+max(uid_train_nochron_200$max_days_since)
+mean(uid_train_nochron_200$max_days_since)
+sd(uid_train_nochron_200$max_days_since)
+```
+
+### `sd_days_since` across `user_id`
+
+```{r}
+min(uid_train_nochron_200$sd_days_since)
+max(uid_train_nochron_200$sd_days_since)
+mean(uid_train_nochron_200$sd_days_since)
+sd(uid_train_nochron_200$sd_days_since)
+```
+
+
+
+
+
+# Process the data for clustering
+
+## Sample, normalize, and compute similarity with the data set of users who ordered more than 200 products
+
+```{r}
+uid_train_nochron_200_samp <- uid_train_nochron_200[sample(1:nrow(uid_train_nochron_200), 1000, replace=FALSE),]
+order_norm_200_samp <- normalize(uid_train_nochron_200_samp)
+sapply(order_norm_200_samp, mean)
+sapply(order_norm_200_samp, var)
+set.seed(15)
+order_norm_200_samp_diffs <- dist(order_norm_200_samp)
+anyNA(order_norm_200_samp_diffs)
+```
+
+## Keep the unsampled data set of users who ordered more than 200 products
+
+```{r}
+order_norm_200 <- normalize(uid_train_nochron_200)
+sapply(order_norm_200, mean)
+sapply(order_norm_200, var)
+set.seed(10)
+order_norm_200_diffs <- dist(order_norm_200)
+anyNA(order_norm_200_diffs)
+```
+
+## Plot a Dendrogram of 1000 random users who ordered more than 200 products
+
+```{r,fig.width=7,fig.height=100}
+order_norm_200_samp_diffs %>%
+  hclust("ave") %>%
+  as.phylo() %>%
+  plot(cex=0.7, label.offset=0, main="Dendrogram of 1000 Random Users with No Chronology", sub="who ordered more than 200 products")
+```
+
+## Plot a Dendrogram of all users who ordered more than 200 products
+
+### Create a closeup data set for an enhanced visual representation
+
+```{r}
+order_norm_200_diffs_closeup <- order_norm_200_diffs %>%
+  hclust("ave")
+d1 <- cut(as.dendrogram(order_norm_200_diffs_closeup), h=1)
+d10 <- cut(as.dendrogram(order_norm_200_diffs_closeup), h=10)
+```
+
+### Plot some branches of the closeup data set
+
+```{r}
+# $lower[[129]]
+# 'dendrogram' with 2 branches and 2 members total, at height 0.9451381 
+plot(d1$lower[[129]])
+
+# $lower[[1]]
+# 'dendrogram' with 2 branches and 3 members total, at height 5.014784 
+plot(d10$lower[[1]])
+```
+
+
+
+
+
+# Process the data for **k-Means** clustering
+
+## Perform k-means clustering on normalized data `order_norm_200_samp`:
+
+```{r}
+set.seed(111)
+num_clusters <- 4
+kmean <- order_norm_200_samp
+order_clusts <- kmean %>%
+  kmeans(centers = num_clusters)%>%
+  fitted("classes")%>%
+  as.character()
+kmean <- kmean %>%
+  mutate(cluster=order_clusts)
+```
+
+```{r,echo=FALSE}
+ggplot(kmean, aes(x=days_since, y=reorder_products))+
+  geom_point(aes(color=cluster),alpha=.25)
+```
+
+### `cluster` == 1 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==1))  
+```
+
+### `cluster` == 2 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==2))    
+```
+
+### `cluster` == 3 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==3))    
+```
+
+### `cluster` == 4 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean,aes(x=days_since,y=reorder_products))+
+  geom_point(aes(color=cluster, alpha=cluster==4))    
+```

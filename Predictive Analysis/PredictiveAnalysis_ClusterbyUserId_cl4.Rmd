@@ -1,0 +1,274 @@
+---
+title: "InstaCart Predictive Analysis: K-Means Cluster by User from `df.ordProd900`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "December 11, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tufte)
+library(tidyverse)
+library(Hmisc)
+library(mclust)
+library(BBmisc)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+# Load the Data
+
+```{r message=FALSE, warning=FALSE, cache=FALSE}
+load("../Source/df.ordProd900.Rda")
+```
+
+
+### With Rowname for k-means clustering
+
+```{r}
+df.clusterUid <- df.ordProd900 %>% 
+  group_by(user_id) %>%
+  summarise(uid.numProducts = n(),
+            uid.maxUp.orders = max(user_product.orders),
+            uid.aveUp.orders = mean(user_product.orders),
+            uid.sdUp.orders = sd(user_product.orders),
+            uid.maxUp.order_streak = max(user_product.order_streak),
+            uid.meanUp.order_streak = mean(user_product.order_streak),
+            uid.sdUp.order_streak = sd(user_product.order_streak),
+            uid.numProducts = mean(uid.numProducts),
+            uid.reorderProducts = mean(uid.reorderProducts),
+            uid.reordOrdRatio = mean(uid.reordOrdRatio),
+            uid.aveDaysSince = mean(uid.aveDaysSince),
+            uid.maxDaysSince = mean(uid.maxDaysSince),
+            uid.sdDaysSince = mean(uid.sdDaysSince),
+            uid.accDaysSince = mean(uid.accDaysSince),
+            uid.aveHr = mean(uid.aveHr),
+            uid.sdHr = mean(uid.sdHr),
+            uid.aveDow = mean(uid.aveDow),
+            uid.sdDow = mean(uid.sdDow),
+            uid.produce_distr = mean(uid.produce_distr),
+            uid.dairy_eggs_distr = mean(uid.dairy_eggs_distr),
+            uid.snacks_distr = mean(uid.snacks_distr),
+            uid.beverages_distr = mean(uid.beverages_distr),
+            uid.frozen_distr = mean(uid.frozen_distr),
+            uid.maxproduct.orders = max(product.orders),
+            uid.minproduct.orders = min(product.orders),
+            uid.aveproduct.orders = mean(product.orders),
+            uid.sdproduct.orders = sd(product.orders),
+            uid.maxproduct.userReordProb = max(product.userReordProb),
+            uid.minproduct.userReordProb = min(product.userReordProb),
+            uid.aveproduct.userReordProb = mean(product.userReordProb),
+            uid.sdproduct.userReordProb = sd(product.userReordProb),
+            uid.maxproduct.aveTimesOrdered = max(product.aveTimesOrdered),
+            uid.minproduct.aveTimesOrdered = min(product.aveTimesOrdered),
+            uid.aveproduct.aveTimesOrdered = mean(product.aveTimesOrdered),
+            uid.sdproduct.aveTimesOrdered = sd(product.aveTimesOrdered),
+            uid.maxproduct.reordOrdRatio = max(product.reordOrdRatio),
+            uid.minproduct.reordOrdRatio = min(product.reordOrdRatio),
+            uid.aveproduct.reordOrdRatio = mean(product.reordOrdRatio),
+            uid.sdproduct.reordOrdRatio = sd(product.reordOrdRatio),
+            uid.maxUp.ordersSinceLastOrdered = max(user_product.ordersSinceLastOrdered),
+            uid.minUp.ordersSinceLastOrdered = min(user_product.ordersSinceLastOrdered),
+            uid.aveUp.ordersSinceLastOrdered = mean(user_product.ordersSinceLastOrdered),
+            uid.sdUp.ordersSinceLastOrdered = sd(user_product.ordersSinceLastOrdered),
+            uid.maxUp.aveDaysSinceDifference = max(user_product.aveDaysSinceDifference),
+            uid.minUp.aveDaysSinceDifference = min(user_product.aveDaysSinceDifference),
+            uid.meanUp.aveDaysSinceDifference = mean(user_product.aveDaysSinceDifference),
+            uid.sdUp.aveDaysSinceDifference = sd(user_product.aveDaysSinceDifference),
+            uid.maxproduct.aveDaysSinceDifference = max(product.aveDaysSinceDifference),
+            uid.minproduct.aveDaysSinceDifference = min(product.aveDaysSinceDifference),
+            uid.meanproduct.aveDaysSinceDifference = mean(product.aveDaysSinceDifference),
+            uid.sdproduct.aveDaysSinceDifference = sd(product.aveDaysSinceDifference),
+            uid.maxUp.orderRate = max(user_product.orderRate),
+            uid.minUp.orderRate = min(user_product.orderRate),
+            uid.aveUp.orderRate = mean(user_product.orderRate),
+            uid.sdUp.orderRate = sd(user_product.orderRate),
+            uid.maxUp.orderRateSinceFirstOrdered = max(user_product.orderRateSinceFirstOrdered),
+            uid.minUp.orderRateSinceFirstOrdered = min(user_product.orderRateSinceFirstOrdered),
+            uid.aveUp.orderRateSinceFirstOrdered = mean(user_product.orderRateSinceFirstOrdered),
+            uid.sdUp.orderRateSinceFirstOrdered = sd(user_product.orderRateSinceFirstOrdered)) 
+
+df.clusterUid <- as.data.frame(df.clusterUid)
+rownames(df.clusterUid) <- as.character(df.clusterUid$user_id)
+df.clusterUid[,1] <- NULL
+# save(df.clusterUid, file="../Source/df.clusterUid.Rda")
+```
+
+
+
+# Normalize the data set of users who purchased more than 50 products
+
+```{r}
+df.clUid <- df.clusterUid
+df.clUid_norm <- normalize(df.clusterUid)
+rm(df.clusterUid, df.ordProd900)
+```
+
+
+
+# Make k-means data table and keep the rownames as user id
+
+```{r}
+set.seed(355)
+num_clusters <- 4
+
+kmean <- df.clUid_norm %>%
+  na.omit()
+
+kmean2 <- df.clUid_norm %>%
+  na.omit()
+
+order_clusts <- kmean %>%
+  kmeans(centers = num_clusters)%>%
+  fitted("classes")%>%
+  as.character() 
+
+kmean <- kmean %>%
+  mutate(cluster=order_clusts)
+
+kmean3 <- kmean2 %>%
+  mutate(uid_order = rownames(kmean2),
+         tempo = 1:nrow(kmean2)) %>%
+  select(uid_order, tempo)
+
+kmean4 <- kmean %>%
+  mutate(tempo = 1:nrow(kmean))
+
+kmean_final <- kmean4 %>%
+  left_join(kmean3, by = "tempo")
+
+# names(kmean_final)
+length(unique(kmean_final$uid_order))==nrow(kmean_final)
+rownames(kmean_final) <- kmean_final$uid_order
+
+# glimpse(kmean_final)
+kmean_final[,60:61] <- NULL
+kmean_final_Uid <- kmean_final
+# save(kmean_final_Uid, file="../Source/kmean_final_Uid.Rda")
+
+rm(kmean, kmean2, kmean3, kmean4, kmean_final, num_clusters, order_clusts, df.clUid_norm, df.clUid)
+names(kmean_final_Uid)
+```
+
+
+# Plot k-means
+
+```{r,echo=FALSE}
+ggplot(kmean_final_Uid, aes(x=uid.meanproduct.aveDaysSinceDifference, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster),alpha=.25)
+```
+
+
+
+## `cluster` == 1 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final_Uid, aes(x=uid.meanproduct.aveDaysSinceDifference, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==1)) +
+  labs(x="Average Difference in Average Days Since Prior Order", y="Number of Reorders",
+     title="Cluster 1 of User ID",  
+     caption="Data from InstaCart Kaggle Competition")
+```
+
+
+
+## `cluster` == 2 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final_Uid, aes(x=uid.meanproduct.aveDaysSinceDifference, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==2)) +
+  labs(x="Average Difference in Average Days Since Prior Order", y="Number of Reorders",
+     title="Cluster 2 of User ID",  
+     caption="Data from InstaCart Kaggle Competition")    
+```
+
+
+
+## `cluster` == 3 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final_Uid, aes(x=uid.meanproduct.aveDaysSinceDifference, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==3)) +
+  labs(x="Average Difference in Average Days Since Prior Order", y="Number of Reorders",
+     title="Cluster 3 of User ID",  
+     caption="Data from InstaCart Kaggle Competition")
+  # +geom_text(aes(label=rownames(kmean)), size=3, vjust=-0.5) 
+```
+
+
+
+## `cluster` == 4 from `kmean`
+
+```{r,echo=FALSE}
+ggplot(kmean_final_Uid, aes(x=uid.meanproduct.aveDaysSinceDifference, y=uid.reorderProducts))+
+  geom_point(aes(color=cluster, alpha=cluster==4)) +
+  labs(x="Average Difference in Average Days Since Prior Order", y="Number of Reorders",
+     title="Cluster 4 of User ID",  
+     caption="Data from InstaCart Kaggle Competition")
+```
+
+
+
+# Create a Variable for the User Ids in Each Cluster
+
+```{r}
+clust1 <- if_else(kmean_final_Uid$cluster==1, rownames(kmean_final_Uid), "NA")
+clust1 <- clust1[!grepl("NA", clust1)]
+length(clust1) 
+anyNA(clust1)
+```
+
+
+```{r}
+clust2 <- if_else(kmean_final_Uid$cluster==2, rownames(kmean_final_Uid), "NA")
+clust2 <- clust2[!grepl("NA", clust2)] 
+length(clust2)
+anyNA(clust2)
+```
+
+
+```{r}
+clust3 <- if_else(kmean_final_Uid$cluster==3, rownames(kmean_final_Uid), "NA")
+clust3 <- clust3[!grepl("NA", clust3)]
+length(clust3)
+anyNA(clust3)
+```
+
+
+```{r}
+clust3 <- if_else(kmean_final_Uid$cluster==3, rownames(kmean_final_Uid), "NA")
+clust3 <- clust3[!grepl("NA", clust3)]
+length(clust3)
+anyNA(clust3)
+clust3_Uid <- clust3
+save(clust3_Uid, file = "../Source/clust3_Uid.Rda")
+```
+
+```{r}
+clust4 <- if_else(kmean_final_Uid$cluster==4, rownames(kmean_final_Uid), "NA")
+clust4 <- clust4[!grepl("NA", clust4)]
+length(clust4)
+anyNA(clust4)
+clust4_Uid <- clust4
+save(clust4_Uid, file = "../Source/clust4_Uid.Rda")
+```
+
+```{r}
+rm(clust1,clust2, clust3, clust4, kmean_final_Uid, clust4_Uid)
+```
+

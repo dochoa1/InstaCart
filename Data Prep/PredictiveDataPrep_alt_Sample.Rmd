@@ -3,7 +3,7 @@ title: "InstaCart Predictive Data Prep: Predictive Data Prep Alternative Samples
 author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
 date: "December 11, 2017"
 knit: (function(inputFile, encoding) {
-  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveDataPrep_HTML_Output") })
 output:
   bookdown::tufte_html2:
     number_sections: no
@@ -26,12 +26,14 @@ options(htmltools.dir.version = FALSE)
 ```
 
 
+* This file is not meant to be knitted because it's a data prep file.
+
+
 
 # Prepare the Data
 
 ## Load the Data
-
-```{r message=FALSE, warning=FALSE, cache=TRUE}
+```{r message=FALSE, warning=FALSE, cache=FALSE}
 load("../Source/data_final.Rda")
 load("../Source/order_products_sample60_prior.Rda")
 products <- read_csv("../Source/products.csv")  
@@ -40,10 +42,9 @@ products <- read_csv("../Source/products.csv")
 
 
 
-# Top 1000 Users and Products
+# Approach 1: Top 1000 Users and Products
 
 ## Identify the Top 1000 Users
-
 ```{r}
 topUsers_1000 <- order_products_sample60_prior %>%
   left_join(products, by="product_id") %>%
@@ -55,7 +56,6 @@ topUsers_1000 <- order_products_sample60_prior %>%
 ```
 
 ## Identify the Top 1000 Most Popular Products
-
 ```{r}
 topProducts_1000 <- order_products_sample60_prior %>%
   left_join(products, by="product_id") %>%
@@ -67,7 +67,6 @@ topProducts_1000 <- order_products_sample60_prior %>%
 ```
 
 ## Sample Dataset with the Top 1000 Users and Products
-
 ```{r}
 df.uid1000 <- subset(data_final, user_id %in% topUsers_1000$user_id) 
 df.uid1000 <- subset(df.uid1000, product_id %in% topProducts_1000$product_id) 
@@ -75,13 +74,11 @@ df.uid1000 <- as.data.frame(df.uid1000)
 ```
 
 ## Save the Final Sampled Dataset
-
 ```{r}
 # save(df.uid1000, file = "../Source/df.uid1000.Rda")
 ```
 
 ## Clean
-
 ```{r}
 rm(df.uid1000, products, topProducts_1000, topUsers_1000)
 ```
@@ -91,10 +88,9 @@ rm(df.uid1000, products, topProducts_1000, topUsers_1000)
 
 
 
-# Random 1000 Users who Ordered at Least 10 Times and More than 50 Products 
+# Approach 2: Users who Ordered at Least 15 Times and More than 100 Products 
 
 ## Identify Users who Have Ordered More Than 100 Products
-
 ```{r}
 uid.numProducts_100g <- data_final %>%
   group_by(user_id) %>%
@@ -104,7 +100,6 @@ uid.numProducts_100g <- data_final %>%
 ```
 
 ## Identify Users who Have Made More Than 15 Orders
-
 ```{r}
 uid.lastOrder_15g <- order_products_sample60_prior %>% 
   group_by(user_id) %>% 
@@ -113,8 +108,7 @@ uid.lastOrder_15g <- order_products_sample60_prior %>%
   arrange(desc(uid.lastOrder)) 
 ```
 
-# Sample Data Set with Users who Have Made More Than 15 Orders & More Than 100 Purchase of Products
-
+# Sample Data Set with Users who Have Made More Than 15 Orders & Bought More Than 100 Items
 ```{r}
 df.ordProd <- 
   subset(data_final, user_id %in% uid.lastOrder_15g$user_id) 
@@ -124,7 +118,7 @@ df.ordProd <-
 length(unique(df.ordProd$user_id)) # 11509 users in the data table
 ```
 
-# Still Big, so Sample 900 & 500 Random Users
+# Approach 3 & 4: Still Big, so Sample 900 & 500 Random Users
 
 ## 900
 ```{r}
@@ -149,14 +143,13 @@ df.ordProd500 <- as.data.frame(df.ordProd500)
 ```
 
 ## Save the Final Sampled Dataset
-
 ```{r}
 # save(df.ordProd900, file = "../Source/df.ordProd900.Rda")
 # save(df.ordProd500, file = "../Source/df.ordProd500.Rda")
+# save(df.ordProd, file = "../Source/df.ordProd.Rda")
 ```
 
 # Clean 
-
 ```{r}
 rm(data_final, df.ordProd, df.ordProd500, df.ordProd900, order_products_sample60_prior, uid.lastOrder_15g, uid.numProducts_100g, random_users)
 ```

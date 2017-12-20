@@ -1,0 +1,211 @@
+---
+title: "InstaCart Predictive Data Prep: Logit with `clust4_Uid`"
+author: "April Leclair, Daniel Ochoa, Hoang Anh Thai Vu, Qiuhan Sun"
+date: "December 11, 2017"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "PredictiveAnalysis_HTML_Output") })
+output:
+  bookdown::tufte_html2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::html_document2:
+    number_sections: no
+    split_by: none
+    toc: no
+  bookdown::tufte_handout2:
+    latex_engine: xelatex
+    number_sections: no
+    toc: no
+---
+
+```{r setup, include=FALSE, cache=FALSE}
+library(tidyverse)
+library(readr)
+library(pROC)
+knitr::opts_chunk$set(tidy = FALSE, message=FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+
+
+# Prepare the Data
+
+## Load the Data
+
+```{r message=FALSE, warning=FALSE, cache=FALSE}
+load("../Source/data_final.Rda")
+load("../Source/clust4_Uid.Rda")
+```
+
+```{r}
+df.clust4_Uid <- subset(data_final, user_id %in% clust4_Uid)  
+```
+
+
+
+## Divide Train & Test Data
+
+```{r cache.lazy=FALSE}
+samplesize <- floor(0.75 * nrow(df.clust4_Uid))
+set.seed(098)
+all_indices = c(1:nrow(df.clust4_Uid))
+train_indices = sample(seq_len(nrow(df.clust4_Uid)), size = samplesize)
+test_indices = setdiff(all_indices, train_indices)
+all( ! test_indices %in% train_indices)
+
+# Train_data
+train = df.clust4_Uid[train_indices, ]
+train <- train %>% arrange(user_id, product_id)
+
+# Test_data
+test = df.clust4_Uid[test_indices, ] 
+test <- test %>% arrange(user_id, product_id)
+
+rm(samplesize, all_indices, train_indices, test_indices, df.clust4_Uid)
+```
+
+
+
+# Predictive Analysis: Logistic Regression
+
+## Full Model 
+
+Fit the model for binomial regression.
+
+```{r}
+modelf <- glm(reordered ~ . - `user_id` - `product_id`, family = binomial(link = 'logit'), data = train)
+```
+
+Obtain the results of our model:
+```{r}
+summary(modelf)
+```
+
+## Fewer Variables
+
+Fit the model for binomial regression. We remove these statistically insignificant variables this time.
+
+```{r}
+model2 <- glm(reordered ~ user_product.order_streak + uid.reorderProducts + uid.reordOrdRatio + uid.aveDaysSince + uid.accDaysSince + uid.sdHr + uid.dairy_eggs_distr + product.userReordProb + product.reordOrdRatio + user_product.ordersSinceLastOrdered + product.aveDaysSinceDifference + user_product.orderRate + user_product.orderRateSinceFirstOrdered, family = binomial(link = 'logit'), data = train)
+```
+
+Obtain the results of our model:
+```{r}
+summary(model2)
+```
+
+## Even Fewer Variables
+
+Remove variables with one star from `model2`
+
+```{r}
+model3 <- glm(reordered ~ user_product.order_streak + uid.reorderProducts + uid.reordOrdRatio + uid.aveDaysSince + uid.accDaysSince + uid.sdHr + uid.frozen_distr + product.userReordProb + user_product.ordersSinceLastOrdered + user_product.orderRate + user_product.orderRateSinceFirstOrdered, family = binomial(link = 'logit'), data = train)
+```
+
+
+Obtain the results of our model:
+```{r}
+summary(model3)
+```
+
+## Compare Models
+
+```{r}
+anova(modelf, model2, test="Chisq")
+anova(modelf, model3, test="Chisq")
+anova(model2, model3, test="Chisq")
+```
+
+It means that the fitted model "modelf" is not significantly different from either "model2" or "model3". However, "model3" is significantly different form "model2" at p = 0.1. So, we decide to use model3 for our prediction.
+
+
+## Testing Function
+
+```{r}
+accuracy_test <- function(pred_mod) {
+  
+  # confusion matrix, precision, recall
+  cmt <- confusionMatrix(pred_mod, test$reordered)
+  recall <- cmt[2,2]/sum(cmt[2,])
+  precision <- cmt[2,2]/sum(cmt[,2])
+  specificity <- cmt[1,1]/sum(cmt[1,])
+  accuracy <- (cmt[2,2]+cmt[1,1])/(cmt[1,1]+cmt[2,2]+cmt[2,1]+cmt[1,2])
+  
+  # print output
+  result=list(confMatrTable = unlist(cmt), precision=precision, recall=recall,
+              specificity=specificity, accuracy=accuracy)
+  
+  return(result)
+}
+  
+  
+  
+f1_test <- function (pred, ref,user_id) {
+  require(ModelMetrics)
+  dt <- tibble(user_id, pred, ref)
+  dt <- dt %>%
+    group_by(user_id)%>%
+    mutate(f1_score = f1Score(pred,ref))%>%
+    summarise(f1_score = mean(f1_score,na.rm=TRUE))
+  f1_mean <- mean(dt$f1_score,na.rm=TRUE)
+  return (f1_mean)
+}
+
+
+
+f1_comp_test <- function(model, cutoff){
+
+  # prediction for our model
+  pred_mod_tem <- predict(model, newdata = test, type = 'response')
+  pred_mod <- ifelse(pred_mod_tem > cutoff, 1, 0)
+  pred_f1 <- f1_test(pred_mod, test$reordered, test$user_id)
+  
+  # prediction for null model
+  pred_null <- ifelse(test$user_product.order_streak > 0, 1, 0)
+  null_f1 <- f1_test(pred_null, test$reordered, test$user_id)
+  
+  # comparison to null model
+  diff_raw <- pred_f1-null_f1
+  diff_perc <- diff_raw/null_f1
+  
+  
+  acc_output <- accuracy_test(pred_mod)
+  
+  # print output
+  result1=list(pred_f1=pred_f1)
+  result2=list(null_f1=null_f1)
+  result3=list(diff_raw=diff_raw, diff_perc=diff_perc)
+  result4=acc_output
+  
+  return(c(result1, result2, result3, result4))
+}
+```
+
+
+## Results
+
+```{r}
+f1_comp_test(model3, 0.19)
+```
+
+
+## Plot GLM
+
+```{r warning = FALSE}
+pred_logit_pre <- predict(model3, newdata = test, type = 'response')
+
+ggplot(test, aes(x=pred_logit_pre, y=reordered)) + geom_point() +
+  stat_smooth(method="glm", family="binomial", se=TRUE) +
+  labs(x="Prediction", y="Actual",
+       title="Logistic Regression of Prediction vs. Actual Reordered",
+       caption="Data from InstaCart Kaggle Competition")
+```
+
+
+## ROC
+
+```{r warning = FALSE}
+pred_logit <- ifelse(pred_logit_pre > 0.19, 1, 0)
+roc(test$reordered, pred_logit, plot=TRUE)
+```
